@@ -1,6 +1,7 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 const String baseImg = "https://contacto.luvegi.com/recursos/";
 
@@ -23,17 +24,25 @@ class Ejecutivo {
 }
 
 final Map<String, Ejecutivo> ejecutivos = {
-  "01": Ejecutivo(nombre: "HUGO TORRES", cargo: "JEFE COMERCIAL", wsp: "991999471", foto: "fotoHugo.webp"),
-  "02": Ejecutivo(nombre: "ANGELA VARGAS", cargo: "EJECUTIVA COMERCIAL", wsp: "991999461", foto: "fotoAngela.webp"),
-  "03": Ejecutivo(nombre: "RAFAEL BOLIVAR", cargo: "EJECUTIVO COMERCIAL", wsp: "991999459", foto: "fotoRafael.webp"),
-  "04": Ejecutivo(nombre: "ROCIO SALINAS", cargo: "EJECUTIVA COMERCIAL", wsp: "991999452", foto: "fotoRocio.webp"),
-  "05": Ejecutivo(nombre: "JIMMY SÁNCHEZ", cargo: "EJECUTIVO COMERCIAL", wsp: "991999462", foto: "fotoJimmy.webp"),
-  "06": Ejecutivo(nombre: "ENRIQUE NEIRA", cargo: "EJECUTIVO COMERCIAL", wsp: "991999467", foto: "fotoEnrique.webp"),
-  "07": Ejecutivo(nombre: "JULIO HUAREZ", cargo: "EJECUTIVO COMERCIAL", wsp: "991999449", foto: "fotoJulio.webp"),
-  "08": Ejecutivo(nombre: "VALERIA OJEDA", cargo: "EJECUTIVA COMERCIAL", wsp: "991999488", foto: "fotoValeria.webp"),
-  "09": Ejecutivo(nombre: "RENZO GONZALEZ", cargo: "EJECUTIVO COMERCIAL", wsp: "940187291", foto: "fotoRenzo.webp"),
-  "10": Ejecutivo(nombre: "LUIS HURTADO", cargo: "GERENTE COMERCIAL", wsp: "991999475", foto: "fotoLuis.webp"),
-  "11": Ejecutivo(nombre: "ISSAYA CHAVEZ", cargo: "EJECUTIVA COMERCIAL", wsp: "997127370", foto: "fotoIssaya.webp"),
+  "01": const Ejecutivo(nombre: "HUGO TORRES", cargo: "JEFE COMERCIAL", wsp: "991999471", foto: "fotoHugo.webp"),
+  "02": const Ejecutivo(nombre: "ANGELA VARGAS", cargo: "EJECUTIVA COMERCIAL", wsp: "991999461", foto: "fotoAngela.webp"),
+  "03": const Ejecutivo(nombre: "RAFAEL BOLIVAR", cargo: "EJECUTIVO COMERCIAL", wsp: "991999459", foto: "fotoRafael.webp"),
+  "04": const Ejecutivo(nombre: "ROCIO SALINAS", cargo: "EJECUTIVA COMERCIAL", wsp: "991999452", foto: "fotoRocio.webp"),
+  "05": const Ejecutivo(nombre: "JIMMY SÁNCHEZ", cargo: "EJECUTIVO COMERCIAL", wsp: "991999462", foto: "fotoJimmy.webp"),
+  "06": const Ejecutivo(nombre: "ENRIQUE NEIRA", cargo: "EJECUTIVO COMERCIAL", wsp: "991999467", foto: "fotoEnrique.webp"),
+  "07": const Ejecutivo(nombre: "JULIO HUAREZ", cargo: "EJECUTIVO COMERCIAL", wsp: "991999449", foto: "fotoJulio.webp"),
+  "08": const Ejecutivo(nombre: "VALERIA OJEDA", cargo: "EJECUTIVA COMERCIAL", wsp: "991999488", foto: "fotoValeria.webp"),
+  "09": const Ejecutivo(nombre: "RENZO GONZALEZ", cargo: "EJECUTIVO COMERCIAL", wsp: "940187291", foto: "fotoRenzo.webp"),
+  "10": const Ejecutivo(nombre: "LUIS HURTADO", cargo: "GERENTE COMERCIAL", wsp: "991999475", foto: "fotoLuis.webp"),
+  "11": const Ejecutivo(nombre: "ISSAYA CHAVEZ", cargo: "EJECUTIVA COMERCIAL", wsp: "997127370", foto: "fotoIssaya.webp"),
+  "12": const Ejecutivo(nombre: "MAURICIO GIUSTI", cargo: "GERENTE GENERAL", wsp: "991999494", foto: ""),
+  "13": const Ejecutivo(nombre: "LUIS GIUSTI", cargo: "GERENTE DE DESARROLLO Y ESTRATEGIA DE NEGOCIO", wsp: "991999495", foto: "fotoLuwa.webp"),
+  "14": const Ejecutivo(nombre: "DIEGO CASARIEGO", cargo: "EJECUTIVO DE NEGOCIOS RENTA", wsp: "991999490", foto: "fotoDiego.webp"),
+  "15": const Ejecutivo(nombre: "LUIS CESPEDES", cargo: "JEFE COMERCIAL DE RENTA", wsp: "965380922", foto: "fotoLuisCespedes.webp"),
+  "16": const Ejecutivo(nombre: "JOSE RAMOS", cargo: "EJECUTIVO POSTVENTA", wsp: "991999466", foto: "fotoJose.webp"),
+  "17": const Ejecutivo(nombre: "PAOLA ESCOBEDO", cargo: "EJECUTIVA COMERCIAL", wsp: "959752400", foto: "fotoPaola.webp"),
+  "18": const Ejecutivo(nombre: "SERGIO ALVAREZ", cargo: "SUB GERENTE DE PROYECTOS", wsp: "991999451", foto: "fotoSergio.webp"),
+  "19": const Ejecutivo(nombre: "JHONATAN TORRES", cargo: "JEFE COMERCIAL DE SERVICIOS", wsp: "991999445", foto: "fotoJhonatan.webp"),
 };
 
 class LuvegiApp extends StatelessWidget {
@@ -60,518 +69,716 @@ class TarjetaEjecutivaPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ejecutivo = ejecutivoActual;
-    final width = MediaQuery.of(context).size.width;
-    final isMobile = width < 850;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFFF0000),
-      body: Stack(
-        children: [
-          const Positioned.fill(child: FondoPuntos()),
-          SafeArea(
-            child: isMobile
-                ? SingleChildScrollView(
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: TarjetaCentral(ejecutivo: ejecutivo),
-                    ),
-                  )
-                : Center(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final h = constraints.maxHeight;
+
+        final isMobile = w < 700;
+        final isTablet = w >= 700 && w < 1100;
+        final isDesktop = w >= 1100;
+
+        return Scaffold(
+          backgroundColor: isMobile ? Colors.white : const Color(0xFFFF0000),
+          body: Stack(
+            children: [
+              if (!isMobile) const Positioned.fill(child: _FondoPuntos()),
+
+              if (isMobile)
+                SizedBox.expand(
+                  child: _TarjetaCentral(
+                    ejecutivo: ejecutivo,
+                    cardWidth: w,
+                    mode: _CardMode.mobile,
+                  ),
+                ),
+
+              if (isTablet)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
                     child: FittedBox(
                       fit: BoxFit.contain,
                       child: SizedBox(
-                        width: 1900,
-                        height: 880,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            const SizedBox(
-                              width: 580,
-                              child: PanelIzquierdo(),
-                            ),
-                            const SizedBox(width: 60),
-                            SizedBox(
-                              width: 400,
-                              child: Align(
-                                alignment: Alignment.center,
-                                child: SizedBox(
-                                  height: 840,
-                                  child: TarjetaCentral(ejecutivo: ejecutivo),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 60),
-                            const SizedBox(
-                              width: 580,
-                              child: PanelDerecho(),
-                            ),
-                          ],
+                        width: 500,
+                        height: 860,
+                        child: Center(
+                          child: _TarjetaCentral(
+                            ejecutivo: ejecutivo,
+                            cardWidth: 500,
+                            mode: _CardMode.tablet,
+                          ),
                         ),
                       ),
                     ),
                   ),
+                ),
+
+              if (isDesktop)
+                _DesktopLayout(
+                  ejecutivo: ejecutivo,
+                  screenWidth: w,
+                  screenHeight: h,
+                ),
+            ],
           ),
-        ],
+        );
+      },
+    );
+  }
+}
+
+class _DesktopLayout extends StatelessWidget {
+  final Ejecutivo ejecutivo;
+  final double screenWidth;
+  final double screenHeight;
+
+  const _DesktopLayout({
+    required this.ejecutivo,
+    required this.screenWidth,
+    required this.screenHeight,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const double designW = 1500;
+    const double designH = 860;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: FittedBox(
+          fit: BoxFit.contain,
+          child: SizedBox(
+            width: designW,
+            height: designH,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(
+                  width: 500,
+                  height: 760,
+                  child: _PanelIzquierdo(),
+                ),
+                const SizedBox(width: 50),
+                SizedBox(
+                  width: 400,
+                  height: designH,
+                  child: Center(
+                    child: _TarjetaCentral(
+                      ejecutivo: ejecutivo,
+                      cardWidth: 400,
+                      mode: _CardMode.desktop,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 50),
+                const SizedBox(
+                  width: 500,
+                  height: 760,
+                  child: _PanelDerecho(),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
 }
 
-/* ----------------------------------------
-   FONDO DE PUNTOS
----------------------------------------- */
-class FondoPuntos extends StatelessWidget {
-  const FondoPuntos({super.key});
+class _FondoPuntos extends StatelessWidget {
+  const _FondoPuntos();
 
   @override
-  Widget build(BuildContext context) {
-    return CustomPaint(painter: PuntosPainter());
-  }
+  Widget build(BuildContext context) => CustomPaint(painter: _PuntosPainter());
 }
 
-class PuntosPainter extends CustomPainter {
+class _PuntosPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white.withOpacity(.35)
+      ..color = Colors.white.withOpacity(0.28)
       ..style = PaintingStyle.fill;
 
-    const gap = 18.0;
-    for (double x = 0; x < size.width; x += gap) {
-      for (double y = 0; y < size.height; y += gap) {
-        canvas.drawCircle(Offset(x, y), 1.45, paint);
+    const gap = 20.0;
+    const radius = 2.3;
+
+    for (double x = -10; x <= size.width + 10; x += gap) {
+      for (double y = -10; y <= size.height + 10; y += gap) {
+        canvas.drawCircle(Offset(x, y), radius, paint);
       }
     }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
 
-class PanelIzquierdo extends StatelessWidget {
-  const PanelIzquierdo({super.key});
+class _PanelIzquierdo extends StatelessWidget {
+  const _PanelIzquierdo({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Text(
-          "Desde 1980",
-          style: GoogleFonts.montserrat(
-            color: Colors.white,
-            fontSize: 42,
-            fontWeight: FontWeight.w300,
-            shadows: const [
-              Shadow(
-                color: Colors.black26,
-                blurRadius: 2,
-                offset: Offset(1, 1),
-              ),
-            ],
-          ),
-        ),
+    const shadow = [
+      Shadow(color: Colors.black38, blurRadius: 5, offset: Offset(0, 5)),
+    ];
 
-        const SizedBox(height: 20),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final h = constraints.maxHeight;
+        final zonaNumTop = h * 0.34;
+        final zonaNumHeight = h * 0.38;
 
-        Container(
-          width: 420,
-          height: 2,
-          color: Colors.white70,
-        ),
-
-        const SizedBox(height: 22),
-
-        Text(
-          "Más de",
-          style: GoogleFonts.montserrat(
-            color: Colors.white,
-            fontSize: 72,
-            fontWeight: FontWeight.w800,
-            shadows: const [
-              Shadow(
-                color: Colors.black26,
-                blurRadius: 4,
-                offset: Offset(0, 4),
-              ),
-            ],
-          ),
-        ),
-
-        Transform.translate(
-          offset: const Offset(0, -4),
-          child: Text(
-            "45",
-            style: GoogleFonts.montserrat(
-              color: Colors.white,
-              fontSize: 265,
-              height: 0.90,
-              fontWeight: FontWeight.w900,
-              fontStyle: FontStyle.italic,
-              shadows: const [
-                Shadow(
-                  color: Colors.black26,
-                  blurRadius: 4,
-                  offset: Offset(0, 4),
+        return Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            Positioned(
+              top: h * 0.04,
+              left: 0,
+              right: 0,
+              child: Text(
+                "Desde 1980",
+                textAlign: TextAlign.center,
+                style: GoogleFonts.montserrat(
+                  color: Colors.white,
+                  fontSize: 42,
+                  fontWeight: FontWeight.w300,
+                  letterSpacing: 1.2,
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
-
-        const SizedBox(height: 18),
-
-        Text(
-          "años de",
-          textAlign: TextAlign.center,
-          style: GoogleFonts.montserrat(
-            color: Colors.white,
-            fontSize: 62,
-            height: 0.95,
-            fontWeight: FontWeight.w800,
-            shadows: const [
-              Shadow(
-                color: Colors.black26,
-                blurRadius: 4,
-                offset: Offset(0, 4),
+            Positioned(
+              top: h * 0.18,
+              left: 30,
+              right: 30,
+              child: Container(height: 2.5, color: Colors.white.withOpacity(.65)),
+            ),
+            Positioned(
+              top: h * 0.21,
+              left: 0,
+              right: 0,
+              child: Text(
+                "Más de",
+                textAlign: TextAlign.center,
+                style: GoogleFonts.montserrat(
+                  color: Colors.white,
+                  fontSize: 76,
+                  height: .9,
+                  fontWeight: FontWeight.w900,
+                  shadows: shadow,
+                ),
               ),
-            ],
-          ),
-        ),
-
-        Text(
-          "experiencia",
-          textAlign: TextAlign.center,
-          style: GoogleFonts.montserrat(
-            color: Colors.white,
-            fontSize: 62,
-            height: 0.95,
-            fontWeight: FontWeight.w800,
-            shadows: const [
-              Shadow(
-                color: Colors.black26,
-                blurRadius: 4,
-                offset: Offset(0, 4),
+            ),
+            Positioned(
+              top: zonaNumTop,
+              left: 0,
+              right: 0,
+              height: zonaNumHeight,
+              child: FittedBox(
+                fit: BoxFit.contain,
+                child: Text(
+                  "45",
+                  style: GoogleFonts.montserrat(
+                    color: Colors.white,
+                    fontSize: 400,
+                    height: 1,
+                    fontWeight: FontWeight.w900,
+                    fontStyle: FontStyle.italic,
+                    letterSpacing: -5,
+                    shadows: const [
+                      Shadow(color: Colors.black38, blurRadius: 6, offset: Offset(0, 7)),
+                    ],
+                  ),
+                ),
               ),
-            ],
-          ),
-        ),
-      ],
+            ),
+            Positioned(
+              top: h * 0.725,
+              left: 0,
+              right: 0,
+              child: Text(
+                "años de",
+                textAlign: TextAlign.center,
+                style: GoogleFonts.montserrat(
+                  color: Colors.white,
+                  fontSize: 68,
+                  height: .82,
+                  fontWeight: FontWeight.w900,
+                  shadows: shadow,
+                ),
+              ),
+            ),
+            Positioned(
+              top: h * 0.845,
+              left: 0,
+              right: 0,
+              child: Text(
+                "experiencia",
+                textAlign: TextAlign.center,
+                style: GoogleFonts.montserrat(
+                  color: Colors.white,
+                  fontSize: 68,
+                  height: .82,
+                  fontWeight: FontWeight.w900,
+                  shadows: shadow,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
-class PanelDerecho extends StatelessWidget {
-  const PanelDerecho({super.key});
+
+class _PanelDerecho extends StatelessWidget {
+  const _PanelDerecho();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 30,
-        vertical: 40,
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text(
-            "Marcas\nAsociados",
-            textAlign: TextAlign.center,
-            style: GoogleFonts.montserrat(
-              color: Colors.white,
-              fontSize: 42,
-              fontWeight: FontWeight.w300,
-              height: 1.2,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final h = constraints.maxHeight;
+
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            Positioned(
+              top: h * 0.04,
+              left: 0,
+              right: 0,
+              child: Text(
+                "Marcas\nAsociadas",
+                textAlign: TextAlign.center,
+                style: GoogleFonts.montserrat(
+                  color: Colors.white,
+                  fontSize: 42,
+                  height: 1.1,
+                  fontWeight: FontWeight.w300,
+                ),
+              ),
             ),
-          ),
-
-          const SizedBox(height: 20),
-
-          Container(
-            width: 420,
-            height: 2,
-            color: Colors.white70,
-          ),
-
-          const SizedBox(height: 25),
-
-          Image.network(
-            "${baseImg}recurso.webp",
-            width: 350,
-            fit: BoxFit.contain,
-            color: Colors.white,
-          ),
-        ],
-      ),
+            Positioned(
+              top: h * 0.18,
+              left: 30,
+              right: 30,
+              child: Container(height: 2.5, color: Colors.white.withOpacity(.6)),
+            ),
+            Positioned(
+              top: h * 0.23,
+              left: 0,
+              right: 0,
+              child: SizedBox(
+                width: 349,
+                height: 597,
+                child: Image.network(
+                  "${baseImg}recurso.webp",
+                  fit: BoxFit.contain,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
-/* ----------------------------------------
-   TARJETA CENTRAL
----------------------------------------- */
-class TarjetaCentral extends StatelessWidget {
+enum _CardMode { mobile, tablet, desktop }
+
+class _TarjetaCentral extends StatelessWidget {
   final Ejecutivo ejecutivo;
+  final double cardWidth;
+  final _CardMode mode;
 
-  const TarjetaCentral({super.key, required this.ejecutivo});
+  const _TarjetaCentral({
+    required this.ejecutivo,
+    required this.cardWidth,
+    required this.mode,
+  });
 
-  Future<void> abrir(String url) async {
+  bool get isMobile => mode == _CardMode.mobile;
+  bool get isTablet => mode == _CardMode.tablet;
+  bool get isDesktop => mode == _CardMode.desktop;
+
+  Future<void> _abrir(String url) async {
     await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
   }
 
+  Future<void> _whatsapp() async {
+    if (ejecutivo.wsp.trim().isEmpty) return;
+
+    final msg = Uri.encodeComponent("Hola ${ejecutivo.nombre}, quisiera más información.");
+    await launchUrl(
+      Uri.parse("https://wa.me/51${ejecutivo.wsp}?text=$msg"),
+      mode: LaunchMode.externalApplication,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final mobile = MediaQuery.of(context).size.width < 850;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxH = constraints.maxHeight.isFinite ? constraints.maxHeight : 860.0;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(mobile ? 0 : 25),
-        boxShadow: mobile
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withOpacity(.25),
-                  blurRadius: 24,
-                  offset: const Offset(0, 13),
-                ),
-              ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          // Logo LUVEGI
-          Container(
-            height: 75,
-            alignment: Alignment.center,
-            child: Image.network(
-              "${baseImg}logo.webp",
-              width: 210,
-              fit: BoxFit.contain,
-            ),
-          ),
+        final baseW = isMobile ? 390.0 : 400.0;
+        final baseH = isMobile ? 760.0 : 760.0;
 
-          // Cabecera roja con curva inferior
-          Container(
-            height: 170,
-            width: double.infinity,
-            decoration: const BoxDecoration(
-              color: Color(0xFFFF0000),
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.elliptical(100, 30),
-                bottomRight: Radius.elliptical(100, 30),
-              ),
+        final scaleW = cardWidth / baseW;
+        final scaleH = maxH / baseH;
+
+        final s = isMobile
+            ? math.min(scaleW, scaleH).clamp(0.70, 1.15)
+            : (cardWidth / 400).clamp(0.78, 1.25);
+
+        double v(double x) => x * s;
+        double fs(double x) => x * s.clamp(0.88, 1.10);
+
+        final fotoVacia = ejecutivo.foto.trim().isEmpty;
+
+        final logoH = v(isMobile ? 84 : 82);
+        final bannerH = v(isMobile ? 170 : 186);
+        final avatarD = v(isMobile ? 118 : 134);
+        final avatarOffset = avatarD / 2 + v(4);
+
+        final cargoFs = fs(isMobile ? 11.5 : 13);
+        final nombreFs = fs(isMobile ? 22 : 26);
+        final btnH = v(isMobile ? 48 : 38);
+        final btnWebH = v(isMobile ? 34 : 34);
+
+        return SizedBox(
+          width: cardWidth,
+          height: isMobile ? double.infinity : null,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: isMobile ? BorderRadius.zero : BorderRadius.circular(28),
+              boxShadow: isMobile
+                  ? []
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(.18),
+                        blurRadius: 30,
+                        offset: const Offset(0, 12),
+                      ),
+                    ],
             ),
+            clipBehavior: Clip.antiAlias,
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.start,
+              mainAxisSize: isMobile ? MainAxisSize.max : MainAxisSize.min,
               children: [
-                const SizedBox(height: 25),
-                Text(
-                  ejecutivo.cargo,
-                  style: GoogleFonts.montserrat(
-                    color: Colors.white,
-                    fontSize: 13,
-                    letterSpacing: 1,
-                    fontWeight: FontWeight.w500,
+                Container(
+                  height: logoH,
+                  width: double.infinity,
+                  color: Colors.white,
+                  alignment: Alignment.center,
+                  child: Image.network(
+                    "${baseImg}logo.webp",
+                    width: v(isMobile ? 220 : 200),
+                    height: v(isMobile ? 65 : 62),
+                    fit: BoxFit.contain,
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  ejecutivo.nombre,
-                  style: GoogleFonts.montserrat(
-                    color: Colors.white,
-                    fontSize: 27,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
 
-          // Foto circular superpuesta sobre la curva
-          Transform.translate(
-            offset: const Offset(0, -65),
-            child: CircleAvatar(
-              radius: 69,
-              backgroundColor: Colors.white,
-              child: CircleAvatar(
-                radius: 61,
-                backgroundImage: NetworkImage("$baseImg${ejecutivo.foto}"),
-              ),
-            ),
-          ),
-
-          // Contenido inferior
-          Expanded(
-            child: Transform.translate(
-              offset: const Offset(0, -50),
-              child: SingleChildScrollView(
-                child: Column(
+                Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.topCenter,
                   children: [
-                    Text(
-                      "EXPERIENCIA EN EL RUBRO:",
-                      style: GoogleFonts.montserrat(
-                        color: const Color(0xFF333333),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Grid rubros
-                    Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 15),
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF7F7F7),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        children: const [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Rubro("INDUSTRIAL"),
-                                SizedBox(height: 13),
-                                Rubro("CONSTRUCCIÓN"),
-                                SizedBox(height: 13),
-                                Rubro("SECTOR PÚBLICO"),
-                                SizedBox(height: 13),
-                                Rubro("TELECOMUNICACIONES"),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Rubro("SALUD"),
-                                SizedBox(height: 13),
-                                Rubro("MINERÍA"),
-                                SizedBox(height: 13),
-                                Rubro("EDUCATIVO"),
-                                SizedBox(height: 13),
-                                Rubro("TECNOLOGÍA"),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Productos
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 25),
-                      child: Row(
-                        children: [
-                          Producto("GRUPOS\nELECTRÓGENOS", "grupo.webp"),
-                          Producto("TABLEROS\nELÉCTRICOS", "tableros.webp"),
-                          Producto("PANELES\nSOLARES", "panel.webp"),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Botón WhatsApp
-                    InkWell(
-                      onTap: () => abrir("https://wa.me/51${ejecutivo.wsp}"),
+                    ClipPath(
+                      clipper: _CurvaConvexaClipper(),
                       child: Container(
-                        width: 300,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFF0000),
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        child: Text(
-                          "CONTACTAR POR WHATSAPP",
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.montserrat(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                          ),
+                        height: bannerH,
+                        width: double.infinity,
+                        color: const Color(0xFFFF0000),
+                        child: Column(
+                          children: [
+                            SizedBox(height: v(22)),
+                            SizedBox(
+                              height: v(32),
+                              child: Center(
+                                child: Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: v(18)),
+                                  child: Text(
+                                    ejecutivo.cargo.toUpperCase(),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 2,
+                                    style: GoogleFonts.montserrat(
+                                      color: Colors.white.withOpacity(.95),
+                                      fontSize: cargoFs,
+                                      fontWeight: FontWeight.w500,
+                                      letterSpacing: 1.2,
+                                      height: 1.15,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: v(6)),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: v(18)),
+                              child: Text(
+                                ejecutivo.nombre.toUpperCase(),
+                                maxLines: 1,
+                                textAlign: TextAlign.center,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.montserrat(
+                                  color: Colors.white,
+                                  fontSize: nombreFs,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: .3,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
-
-                    // Botón web
-                    InkWell(
-                      onTap: () => abrir("https://www.luvegi.com"),
+                    Positioned(
+                      bottom: -avatarOffset,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 8),
+                        width: avatarD,
+                        height: avatarD,
                         decoration: BoxDecoration(
-                          color: Colors.black,
-                          borderRadius: BorderRadius.circular(25),
+                          shape: BoxShape.circle,
+                          color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(.10),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                         ),
-                        child: Text(
-                          "www.luvegi.com",
-                          style: GoogleFonts.montserrat(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                          ),
+                        padding: EdgeInsets.all(v(5)),
+                        child: ClipOval(
+                          child: fotoVacia
+                              ? Container(
+                                  color: Colors.white,
+                                  alignment: Alignment.center,
+                                  child: Icon(
+                                    Icons.person,
+                                    size: v(58),
+                                    color: Colors.grey.shade300,
+                                  ),
+                                )
+                              : Image.network(
+                                  "$baseImg${ejecutivo.foto}",
+                                  fit: BoxFit.cover,
+                                ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
-
-                    // Redes sociales
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Social("fb.webp", "https://www.facebook.com/luvegiperu/"),
-                        Social("in.webp", "https://www.linkedin.com/company/luvegi"),
-                        Social("ig.webp", "https://www.instagram.com/luvegi.pe/"),
-                        Social("yt.webp", "https://www.youtube.com/@LuvegiIngenieros"),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
                   ],
                 ),
-              ),
+
+                SizedBox(height: avatarOffset + v(10)),
+
+                Text(
+                  "EXPERIENCIA EN EL RUBRO:",
+                  style: GoogleFonts.montserrat(
+                    color: const Color(0xFF111111),
+                    fontSize: fs(isMobile ? 12.5 : 13.5),
+                    fontWeight: FontWeight.w800,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+
+                SizedBox(height: v(10)),
+
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: v(isMobile ? 28 : 10)),
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(
+                      vertical: v(isMobile ? 10 : 16),
+                      horizontal: v(isMobile ? 10 : 12),
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF2F2F2),
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _Rubro("INDUSTRIAL", scale: s),
+                              SizedBox(height: v(6)),
+                              _Rubro("CONSTRUCCIÓN", scale: s),
+                              SizedBox(height: v(6)),
+                              _Rubro("SECTOR PÚBLICO", scale: s),
+                              SizedBox(height: v(6)),
+                              _Rubro("TELECOMUNICACIONES", scale: s),
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: v(8)),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _Rubro("SALUD", scale: s),
+                              SizedBox(height: v(6)),
+                              _Rubro("MINERÍA", scale: s),
+                              SizedBox(height: v(6)),
+                              _Rubro("EDUCATIVO", scale: s),
+                              SizedBox(height: v(6)),
+                              _Rubro("TECNOLOGÍA", scale: s),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                SizedBox(height: v(14)),
+
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: v(isMobile ? 22 : 4)),
+                  child: Row(
+                    children: [
+                      Expanded(child: _Producto("GRUPOS\nELECTRÓGENOS", "grupo.webp", scale: s)),
+                      Expanded(child: _Producto("TABLEROS\nELÉCTRICOS", "tableros.webp", scale: s)),
+                      Expanded(child: _Producto("PANELES\nSOLARES", "panel.webp", scale: s)),
+                    ],
+                  ),
+                ),
+
+                SizedBox(height: v(20)),
+
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: v(isMobile ? 30 : 28)),
+                  child: GestureDetector(
+                    onTap: ejecutivo.wsp.trim().isEmpty ? null : _whatsapp,
+                    child: Container(
+                      width: double.infinity,
+                      height: btnH,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF0000),
+                        borderRadius: BorderRadius.circular(35),
+                      ),
+                      child: Text(
+                        isMobile ? "GUARDAR CONTACTO" : "CONTACTAR POR WHATSAPP",
+                        style: GoogleFonts.montserrat(
+                          color: Colors.white,
+                          fontSize: fs(isMobile ? 17 : 12),
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                SizedBox(height: v(14)),
+
+                GestureDetector(
+                  onTap: () => _abrir("https://www.luvegi.com"),
+                  child: Container(
+                    width: v(isMobile ? 180 : 165),
+                    height: btnWebH,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                    child: Text(
+                      "www.luvegi.com",
+                      style: GoogleFonts.montserrat(
+                        color: Colors.white,
+                        fontSize: fs(isMobile ? 13 : 12),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+
+                SizedBox(height: v(14)),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _Social("fb.webp", "https://www.facebook.com/luvegiperu/", scale: s),
+                    SizedBox(width: v(14)),
+                    _Social("in.webp", "https://www.linkedin.com/company/luvegi", scale: s),
+                    SizedBox(width: v(14)),
+                    _Social("ig.webp", "https://www.instagram.com/luvegi.pe/", scale: s),
+                    SizedBox(width: v(14)),
+                    _Social("yt.webp", "https://www.youtube.com/@LuvegiIngenieros", scale: s),
+                  ],
+                ),
+
+                if (isMobile) const Spacer(),
+
+                SizedBox(height: v(isMobile ? 14 : 20)),
+              ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
 
-/* ----------------------------------------
-   WIDGETS AUXILIARES
----------------------------------------- */
-class Rubro extends StatelessWidget {
+class _CurvaConvexaClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    path.lineTo(0, size.height - 38);
+    path.cubicTo(
+      size.width * .23,
+      size.height + 14,
+      size.width * .77,
+      size.height + 14,
+      size.width,
+      size.height - 38,
+    );
+    path.lineTo(size.width, 0);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
+}
+
+class _Rubro extends StatelessWidget {
   final String text;
-  const Rubro(this.text, {super.key});
+  final double scale;
+
+  const _Rubro(this.text, {required this.scale});
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Text(
+        Text(
           "•",
           style: TextStyle(
-            color: Color(0xFFE50000),
-            fontSize: 15,
+            color: const Color(0xFFFF0000),
+            fontSize: 16 * scale.clamp(0.85, 1.05),
             fontWeight: FontWeight.bold,
           ),
         ),
-        const SizedBox(width: 7),
-        Flexible(
-          child: Text(
-            text,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.montserrat(
-              color: const Color(0xFF333333),
-              fontSize: 11.5,
-              fontWeight: FontWeight.w800,
+        SizedBox(width: 4 * scale),
+        Expanded(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              text,
+              style: GoogleFonts.montserrat(
+                color: const Color(0xFF222222),
+                fontSize: 12 * scale.clamp(0.85, 1.05),
+                fontWeight: FontWeight.w800,
+                height: 1,
+              ),
             ),
           ),
         ),
@@ -580,59 +787,68 @@ class Rubro extends StatelessWidget {
   }
 }
 
-class Producto extends StatelessWidget {
+class _Producto extends StatelessWidget {
   final String titulo;
   final String img;
-  const Producto(this.titulo, this.img, {super.key});
+  final double scale;
+
+  const _Producto(this.titulo, this.img, {required this.scale});
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        children: [
-          Text(
-            titulo,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.montserrat(
-              color: Colors.red,
-              fontSize: 8,
-              height: 1.05,
-              fontWeight: FontWeight.w800,
-            ),
+    final s = scale.clamp(0.78, 1.10);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          titulo,
+          textAlign: TextAlign.center,
+          style: GoogleFonts.montserrat(
+            color: const Color(0xFFFF0000),
+            fontSize: 8.5 * s,
+            height: 1.1,
+            fontWeight: FontWeight.w900,
           ),
-          const SizedBox(height: 5),
-          Image.network(
+        ),
+        SizedBox(height: 8 * s),
+        ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 90 * s,
+            maxHeight: 56 * s,
+          ),
+          child: Image.network(
             "$baseImg$img",
-            width: 65,
             fit: BoxFit.contain,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-class Social extends StatelessWidget {
+class _Social extends StatelessWidget {
   final String img;
   final String url;
-  const Social(this.img, this.url, {super.key});
+  final double scale;
 
-  Future<void> abrir() async {
+  const _Social(this.img, this.url, {required this.scale});
+
+  Future<void> _abrir() async {
     await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
   }
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: abrir,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 5),
-        child: Image.network(
-          "$baseImg$img",
-          width: 28,
-          height: 28,
-          fit: BoxFit.contain,
-        ),
+    final size = 26 * scale.clamp(0.85, 1.05);
+
+    return GestureDetector(
+      onTap: _abrir,
+      child: Image.network(
+        "$baseImg$img",
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
       ),
     );
   }

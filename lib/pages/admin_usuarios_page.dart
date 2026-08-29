@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import '../services/admin_usuarios_service.dart';
+import '../services/admin_catalogos_acceso_service.dart';
 
 // =================================================
 // 📦 MODELO DE DATOS
@@ -25,7 +26,7 @@ class Usuario {
       id: map['id'] ?? 0,
       email: map['usuario'] ?? '',
       nombre: map['nombre'] ?? '',
-      rol: map['rol'] ?? 'USUARIO',
+      rol: map['rol'] ?? 'SIN_AREA',
       activo: map['activo'] == 1,
     );
   }
@@ -44,6 +45,7 @@ class AdminUsuariosPage extends StatefulWidget {
 
 class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
   final _service = AdminUsuariosService();
+  final _catalogosService = AdminCatalogosAccesoService();
   List<Usuario> _usuarios = [];
   bool _loading = true;
   bool _searching = false;
@@ -54,7 +56,7 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
   // ─── NUEVO: filtro de estado activo ──────────────────────────────────────
   FiltroEstado _filtroEstado = FiltroEstado.todos;
 
-  final _roles = const ['ADMIN', 'ALMACEN', 'USUARIO', 'RRHH'];
+  List<String> _areas = [];
 
   // 🎨 Paleta
   final Color primaryDark = const Color(0xFF0F172A);
@@ -84,9 +86,19 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
   Future<void> _cargar() async {
     setState(() => _loading = true);
     try {
-      final data = await _service.listar(widget.token);
-      setState(
-          () => _usuarios = data.map((m) => Usuario.fromMap(m)).toList());
+      final result = await Future.wait([
+        _service.listar(widget.token),
+        _catalogosService.areas(widget.token),
+      ]);
+      final data = result[0] as List<Map<String, dynamic>>;
+      final areas = result[1] as List<Map<String, dynamic>>;
+      setState(() {
+        _usuarios = data.map((m) => Usuario.fromMap(m)).toList();
+        _areas = areas
+            .where((a) => a['activo'] == 1 || a['activo'].toString() == '1')
+            .map((a) => a['codigo'].toString())
+            .toList();
+      });
     } catch (_) {
       _snack('Error al conectar con el servidor', error: true);
     } finally {
@@ -167,7 +179,7 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
     final emailCtrl = TextEditingController();
     final nombreCtrl = TextEditingController();
     final passCtrl = TextEditingController();
-    String rol = 'USUARIO';
+    String rol = _areas.isNotEmpty ? _areas.first : 'PROYECTOS';
     bool enviando = false;
     final formKey = GlobalKey<FormState>();
 
@@ -225,8 +237,8 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                     style: TextStyle(
                         color: primaryDark, fontWeight: FontWeight.bold),
                     decoration: _inputStyle(
-                        'Asignar Rol', Icons.manage_accounts_outlined),
-                    items: _roles
+                        'Asignar Área', Icons.apartment_outlined),
+                    items: _areas
                         .map((r) =>
                             DropdownMenuItem(value: r, child: Text(r)))
                         .toList(),
@@ -300,14 +312,14 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
           backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(24)),
-          title: Text('Actualizar Rol',
+          title: Text('Actualizar Área',
               style: TextStyle(
                   color: primaryDark, fontWeight: FontWeight.bold)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Cambiando permisos para:',
+              Text('Cambiando área para:',
                   style:
                       TextStyle(color: textSecondary, fontSize: 13)),
               Text(u.nombre,
@@ -321,9 +333,9 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                 dropdownColor: Colors.white,
                 style: TextStyle(
                     color: primaryDark, fontWeight: FontWeight.bold),
-                decoration: _inputStyle('Nivel de Acceso',
-                    Icons.admin_panel_settings_rounded),
-                items: _roles
+                decoration: _inputStyle('Área del usuario',
+                    Icons.apartment_outlined),
+                items: ({..._areas, nuevoRol}.toList())
                     .map((r) =>
                         DropdownMenuItem(value: r, child: Text(r)))
                     .toList(),
@@ -349,11 +361,11 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                           widget.token, u.id, nuevoRol);
                       if (ok) {
                         Navigator.pop(ctx);
-                        _snack('✅ Rol actualizado a $nuevoRol');
+                        _snack('✅ Área actualizada a $nuevoRol');
                         _cargar();
                       } else {
                         setDialogState(() => subiendo = false);
-                        _snack('❌ Error al cambiar rol', error: true);
+                        _snack('❌ Error al cambiar el área', error: true);
                       }
                     },
               child: subiendo
@@ -464,7 +476,7 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
               decoration: InputDecoration(
                 prefixIcon:
                     Icon(Icons.search, color: textSecondary),
-                hintText: 'Buscar por nombre, email o rol',
+                hintText: 'Buscar por nombre, email o área',
                 hintStyle: TextStyle(color: textSecondary),
                 filled: true,
                 fillColor: Colors.white,
@@ -812,7 +824,7 @@ class _UserCardModern extends StatelessWidget {
                       const SizedBox(height: 10),
                       Row(
                         children: [
-                          // Badge de rol
+                          // Badge de área
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 4),
@@ -891,7 +903,7 @@ class _UserCardModern extends StatelessWidget {
                     borderRadius: BorderRadius.circular(10))),
             const SizedBox(height: 10),
             _optionTile(Icons.admin_panel_settings_outlined,
-                'Cambiar Rol', onEditRol, ctx),
+                'Cambiar Área', onEditRol, ctx),
             _optionTile(Icons.lock_reset_rounded,
                 'Cambiar Contraseña', onResetPass, ctx),
             _optionTile(

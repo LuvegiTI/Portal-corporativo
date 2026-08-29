@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
-import '../services/dashboard_service.dart';
 
-const Color luvegiBlue = Color(0xFF003366);
-const Color luvegiCyan = Colors.cyanAccent;
-const Color backgroundGray = Color(0xFFF1F5F9);
+import '../design_system/luvegi_card.dart';
+import '../services/dashboard_service.dart';
+import '../theme/luvegi_colors.dart';
+import '../theme/luvegi_radius.dart';
+import '../theme/luvegi_spacing.dart';
+import '../theme/luvegi_text.dart';
 
 class DashboardPage extends StatefulWidget {
   final String token;
   final String nombre;
   final String rol;
+  final List<String> permisos;
   final Function(String) onNavigate;
 
   const DashboardPage({
@@ -16,6 +19,7 @@ class DashboardPage extends StatefulWidget {
     required this.token,
     required this.nombre,
     required this.rol,
+    required this.permisos,
     required this.onNavigate,
   });
 
@@ -24,108 +28,263 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  final DashboardService _dbService = DashboardService();
-  
-  // Datos de estado
-  String _totalBoletas = "0";
-  String _totalUsuarios = "0";
-  //List<dynamic> _ultimasBoletas = []; 
-  bool _isLoading = true;
+  final DashboardService _dashboardService = DashboardService();
+
+  bool _cargando = true;
+  String? _error;
+  int _usuariosRegistrados = 0;
+
+  bool get _esAdminSistema => widget.permisos.any(
+        (permiso) => permiso.trim().toUpperCase() == 'ADMIN_SISTEMA',
+      );
 
   @override
   void initState() {
     super.initState();
-    _cargarTodo();
-  }
-
-  // Carga sincronizada de datos desde el backend
-  Future<void> _cargarTodo() async {
-    if (!mounted) return;
-    setState(() => _isLoading = true);
-    
-    try {
-      // 1. Cargar estadísticas si el rol es administrativo
-      if (_esAdminORRH()) {
-        final stats = await _dbService.getStats(widget.token);
-        _totalBoletas = (stats['boletas'] ?? "0").toString();
-        _totalUsuarios = (stats['usuarios'] ?? "0").toString();
-      }
-
-      // 2. Cargar las últimas boletas registradas para el usuario logueado
-      //final boletas = await _dbService.getUltimasBoletas(widget.token);
-      
-      if (mounted) {
-        setState(() {
-       //   _ultimasBoletas = boletas;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint("Error al sincronizar Dashboard: $e");
-      if (mounted) setState(() => _isLoading = false);
+    if (_esAdminSistema) {
+      _cargarUsuarios();
+    } else {
+      _cargando = false;
     }
   }
 
-  bool _esAdminORRH() {
-    final r = widget.rol.toUpperCase();
-    return r == 'ADMIN' || r == 'RRHH';
+  Future<void> _cargarUsuarios() async {
+    // Los usuarios sin administración general no deben consultar esta cifra.
+    if (!_esAdminSistema) return;
+    if (!mounted) return;
+
+    setState(() {
+      _cargando = true;
+      _error = null;
+    });
+
+    try {
+      final stats = await _dashboardService.getStats(widget.token);
+
+      if (!mounted) return;
+
+      setState(() {
+        _usuariosRegistrados = int.tryParse(
+              stats['usuarios']?.toString() ?? '0',
+            ) ??
+            0;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _cargando = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: luvegiBlue));
-    }
+    final width = MediaQuery.sizeOf(context).width;
+    final bool mobile = width < 760;
+    final double horizontalPadding =
+        mobile ? LuvegiSpacing.md : LuvegiSpacing.xl;
 
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      color: backgroundGray,
-      child: RefreshIndicator(
-        onRefresh: _cargarTodo,
+    return Scaffold(
+      backgroundColor: LuvegiColors.background,
+      body: RefreshIndicator(
+        color: LuvegiColors.secondary,
+        onRefresh: () async {
+          if (_esAdminSistema) await _cargarUsuarios();
+        },
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(40),
           physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            LuvegiSpacing.lg,
+            horizontalPadding,
+            LuvegiSpacing.xl,
+          ),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1500),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildWelcomeBanner(mobile),
+                  const SizedBox(height: LuvegiSpacing.xl),
+
+                  if (_esAdminSistema) ...[
+                    Text(
+                      'Resumen del Sistema',
+                      style: LuvegiText.heading.copyWith(
+                        fontSize: 22,
+                        color: LuvegiColors.secondary,
+                      ),
+                    ),
+                    const SizedBox(height: LuvegiSpacing.md),
+                    if (_error != null) ...[
+                      _buildErrorCard(),
+                      const SizedBox(height: LuvegiSpacing.md),
+                    ],
+                    _buildUsersCard(mobile),
+                    const SizedBox(height: 64),
+                  ] else
+                    const SizedBox(height: LuvegiSpacing.xl),
+
+                  _buildSecurityCard(mobile),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWelcomeBanner(bool mobile) {
+  return Container(
+    width: double.infinity,
+    padding: EdgeInsets.symmetric(
+      horizontal: mobile ? 22 : 32,
+      vertical: mobile ? 22 : 26,
+    ),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(
+        color: const Color(0xFFE8E8E8),
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(.04),
+          blurRadius: 12,
+          offset: const Offset(0, 4),
+        ),
+      ],
+    ),
+    child: mobile
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildWelcomeText(mobile),
+              const SizedBox(height: 18),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _buildRoleBadge(),
+              ),
+            ],
+          )
+        : Row(
+            children: [
+              Expanded(
+                child: _buildWelcomeText(mobile),
+              ),
+              _buildRoleBadge(),
+            ],
+          ),
+  );
+}
+ Widget _buildWelcomeText(bool mobile) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        'Bienvenido, ${widget.nombre}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: LuvegiText.display.copyWith(
+          fontSize: mobile ? 24 : 30,
+          fontWeight: FontWeight.w700,
+          color: LuvegiColors.textPrimary,
+        ),
+      ),
+
+      const SizedBox(height: 6),
+
+      Text(
+        'Portal LUVEGI · Plataforma Corporativa',
+        style: LuvegiText.body.copyWith(
+          color: LuvegiColors.textSecondary,
+          fontSize: mobile ? 14 : 15,
+        ),
+      ),
+    ],
+  );
+}
+  Widget _buildRoleBadge() {
+  return Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: 14,
+      vertical: 8,
+    ),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF3F7F3),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(
+        color: LuvegiColors.success.withOpacity(.35),
+      ),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: const BoxDecoration(
+            color: LuvegiColors.success,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          widget.rol.toUpperCase(),
+          style: LuvegiText.label.copyWith(
+            color: LuvegiColors.success,
+            fontWeight: FontWeight.w700,
+            letterSpacing: .3,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+  Widget _buildUsersCard(bool mobile) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: SizedBox(
+        width: mobile ? double.infinity : 280,
+        child: LuvegiCard(
+          padding: const EdgeInsets.all(LuvegiSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildWelcomeBanner(),
-              const SizedBox(height: 40),
-              
-              if (_esAdminORRH()) ...[
-                _buildSectionTitle("Resumen del Sistema"),
-                const SizedBox(height: 20),
-                Wrap(
-                  spacing: 20,
-                  runSpacing: 20,
-                  children: [
-                    _cardStats("Boletas en Sistema", _totalBoletas, Icons.description, Colors.blue),
-                    _cardStats("Usuarios Registrados", _totalUsuarios, Icons.people_alt_rounded, Colors.indigo),
-                  ],
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: LuvegiColors.secondary.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(LuvegiRadius.sm),
                 ),
-                const SizedBox(height: 40),
-              ],
-              
-              _buildSectionTitle("Accesos rápidos"),
-              const SizedBox(height: 20),
-              Wrap(
-                spacing: 20,
-                runSpacing: 20,
-                children: [
-                  _quickBtn("Mis Boletas", Icons.receipt_long, () => widget.onNavigate('Mis Boletas')),
-                  if (widget.rol.toUpperCase() == 'ADMIN')
-                    _quickBtn("Control de Accesos", Icons.manage_accounts, () => widget.onNavigate('Usuarios')),
-                ],
+                child: const Icon(
+                  Icons.people_alt_rounded,
+                  color: LuvegiColors.secondary,
+                  size: 24,
+                ),
               ),
-
-              const SizedBox(height: 40),
-
-             // _buildSectionTitle("Mis Boletas Recientes"),
-             // const SizedBox(height: 20),
-             // _buildRecentBoletasList(),
-              
-              const SizedBox(height: 40),
-              _buildInfoCard(),
+              const SizedBox(height: LuvegiSpacing.md),
+              Text(
+                _cargando ? '...' : '$_usuariosRegistrados',
+                style: LuvegiText.display.copyWith(
+                  fontSize: 30,
+                ),
+              ),
+              const SizedBox(height: LuvegiSpacing.xs),
+              Text(
+                'Usuarios registrados',
+                style: LuvegiText.body.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
         ),
@@ -133,103 +292,58 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- WIDGETS DE COMPONENTES ---
-
-  Widget _buildSectionTitle(String title) {
-    return Text(title, 
-      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: luvegiBlue));
-  }
-
-  Widget _buildWelcomeBanner() {
+  Widget _buildSecurityCard(bool mobile) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(35),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [luvegiBlue, Color(0xFF00509E)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: luvegiBlue.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))],
+      padding: EdgeInsets.all(
+        mobile ? LuvegiSpacing.lg : LuvegiSpacing.xl,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text("Hola, ${widget.nombre} 👋", 
-              style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
-          const SizedBox(height: 10),
-          Text(
-            _esAdminORRH() 
-                ? "Tienes el control total del sistema Luvegi." 
-                : "Bienvenido a tu portal.", 
-            style: const TextStyle(color: Colors.white70, fontSize: 16)
-          ),
-        ],
-      ),
-    );
-  }
-
-  /* Widget _buildRecentBoletasList() {
-    if (_ultimasBoletas.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(30),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-        child: const Column(
-          children: [
-            Icon(Icons.folder_open, color: Colors.grey, size: 40),
-            SizedBox(height: 10),
-            Text("No se encontraron boletas recientes.", style: TextStyle(color: Colors.grey)),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      children: _ultimasBoletas.map((b) => Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(15),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 5)],
-        ),
-        child: ListTile(
-          leading: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-            child: const Icon(Icons.picture_as_pdf, color: Colors.red),
-          ),
-          title: Text("Boleta de Pago - ${b['mes']} ${b['anio']}", 
-              style: const TextStyle(fontWeight: FontWeight.bold)),
-          subtitle: Text("Fecha de subida: ${b['fecha'] ?? 'N/A'}"),
-          trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: luvegiBlue),
-          onTap: () => widget.onNavigate('Mis Boletas'),
-        ),
-      )).toList(),
-    );
-  }*/ 
-
-  Widget _buildInfoCard() {
-    return Container(
-      padding: const EdgeInsets.all(25),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: luvegiCyan.withOpacity(0.5), width: 2),
+        color: LuvegiColors.surface,
+        borderRadius: BorderRadius.circular(LuvegiRadius.lg),
+        border: Border.all(
+          color: LuvegiColors.info.withOpacity(0.55),
+          width: 1.4,
+        ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Icon(Icons.security_outlined, color: luvegiBlue, size: 40),
-          const SizedBox(width: 20),
-          Expanded(
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: LuvegiColors.menuHover,
+              borderRadius: BorderRadius.circular(LuvegiRadius.md),
+            ),
+            child: const Icon(
+              Icons.security_rounded,
+              color: LuvegiColors.secondary,
+              size: 27,
+            ),
+          ),
+          const SizedBox(width: LuvegiSpacing.md),
+          const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("Tus datos están protegidos", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: luvegiBlue)),
-                const SizedBox(height: 5),
-                Text("Este portal garantiza que solo tú veas tu información de forma segura.",
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
+                Text(
+                  'Tus datos están protegidos',
+                  style: TextStyle(
+                    color: LuvegiColors.secondary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                SizedBox(height: LuvegiSpacing.xs),
+                Text(
+                  'Este portal garantiza que solo tú puedas acceder a tu información de forma segura.',
+                  style: TextStyle(
+                    color: LuvegiColors.textSecondary,
+                    fontSize: 14,
+                    height: 1.45,
+                  ),
+                ),
               ],
             ),
           ),
@@ -238,47 +352,35 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _cardStats(String t, String v, IconData i, Color c) {
+  Widget _buildErrorCard() {
     return Container(
-      width: 280,
-      padding: const EdgeInsets.all(25),
+      width: double.infinity,
+      padding: const EdgeInsets.all(LuvegiSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15)],
+        color: LuvegiColors.warning.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(LuvegiRadius.sm),
+        border: Border.all(
+          color: LuvegiColors.warning.withOpacity(0.35),
+        ),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(i, color: c, size: 30),
-          const SizedBox(height: 15),
-          Text(v, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
-          Text(t, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+          const Icon(
+            Icons.warning_amber_rounded,
+            color: LuvegiColors.warning,
+          ),
+          const SizedBox(width: LuvegiSpacing.sm),
+          Expanded(
+            child: Text(
+              'No se pudo actualizar el total de usuarios. ${_error ?? ''}',
+              style: LuvegiText.body.copyWith(
+                color: LuvegiColors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
         ],
-      ),
-    );
-  }
-
-  Widget _quickBtn(String label, IconData icon, VoidCallback tap) {
-    return InkWell(
-      onTap: tap,
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        width: 160,
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.grey.shade200),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 4))],
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: luvegiBlue, size: 32),
-            const SizedBox(height: 12),
-            Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: luvegiBlue)),
-          ],
-        ),
       ),
     );
   }

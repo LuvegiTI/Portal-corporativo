@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 
@@ -14,62 +16,139 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   final _newPassCtrl = TextEditingController();
   final _pageCtrl = PageController();
 
-  final Dio _dio = Dio(BaseOptions(
-    baseUrl: 'https://portal.luvegi.com/api_luvegi',
-    connectTimeout: const Duration(seconds: 10),
-    receiveTimeout: const Duration(seconds: 10),
-  ));
+  final Dio _dio = Dio(
+    BaseOptions(
+      baseUrl: 'https://portal.luvegi.com/api_luvegi',
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    ),
+  );
 
   bool _loading = false;
   bool _isPasswordVisible = false;
   String? _errorMessage;
 
-  // Colores corporativos LUVEGI
   static const Color primaryBlue = Color(0xFF003366);
   static const Color accentBlue = Color(0xFF00509E);
 
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _codeCtrl.dispose();
+    _newPassCtrl.dispose();
+    _pageCtrl.dispose();
+    super.dispose();
+  }
+
+  Map<String, dynamic> _parseResponse(dynamic raw) {
+    if (raw is Map<String, dynamic>) {
+      return raw;
+    }
+
+    if (raw is Map) {
+      return Map<String, dynamic>.from(raw);
+    }
+
+    if (raw is String) {
+      return jsonDecode(raw) as Map<String, dynamic>;
+    }
+
+    throw Exception("Respuesta inválida del servidor");
+  }
+
   Future<void> _solicitarCodigo() async {
-    if (_emailCtrl.text.isEmpty) {
+    if (_emailCtrl.text.trim().isEmpty) {
       setState(() => _errorMessage = "Ingresa tu correo");
       return;
     }
-    setState(() { _loading = true; _errorMessage = null; });
+
+    setState(() {
+      _loading = true;
+      _errorMessage = null;
+    });
+
     try {
       final response = await _dio.post(
         '/request_reset.php',
-        data: {'email': _emailCtrl.text.trim()},
-        options: Options(contentType: Headers.jsonContentType),
+        data: jsonEncode({
+          'email': _emailCtrl.text.trim(),
+        }),
+        options: Options(
+          contentType: Headers.jsonContentType,
+          responseType: ResponseType.plain,
+        ),
       );
-      if (response.data['ok'] == true) {
-        _pageCtrl.nextPage(duration: const Duration(milliseconds: 400), curve: Curves.easeInOut);
+
+      final data = _parseResponse(response.data);
+
+      if (data['ok'] == true) {
+        if (!mounted) return;
+
+        _pageCtrl.nextPage(
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOut,
+        );
       } else {
-        setState(() => _errorMessage = response.data['error'] ?? 'Error');
+        setState(() {
+          _errorMessage = data['error']?.toString() ?? 'Error al enviar código';
+        });
       }
+    } on DioException catch (e) {
+      setState(() {
+        _errorMessage = _getDioError(e, "Error de conexión");
+      });
     } catch (e) {
-      setState(() => _errorMessage = "Error de conexión");
+      setState(() {
+        _errorMessage = "Error inesperado: $e";
+      });
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   Future<void> _cambiarPassword() async {
-    if (_newPassCtrl.text.isEmpty || _codeCtrl.text.isEmpty) {
+    if (_codeCtrl.text.trim().isEmpty || _newPassCtrl.text.trim().isEmpty) {
       setState(() => _errorMessage = "Completa los campos");
       return;
     }
-    setState(() { _loading = true; _errorMessage = null; });
+
+    if (_newPassCtrl.text.trim().length < 8) {
+      setState(() {
+        _errorMessage = "La contraseña debe tener mínimo 8 caracteres";
+      });
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _errorMessage = null;
+    });
+
     try {
       final response = await _dio.post(
         '/reset_password.php',
-        data: {
+        data: jsonEncode({
           'email': _emailCtrl.text.trim(),
           'codigo': _codeCtrl.text.trim(),
           'nueva_password': _newPassCtrl.text.trim(),
-        },
-        options: Options(contentType: Headers.jsonContentType),
+        }),
+        options: Options(
+          contentType: Headers.jsonContentType,
+          responseType: ResponseType.plain,
+        ),
       );
-      if (response.data['ok'] == true) {
+
+      final data = _parseResponse(response.data);
+
+      if (data['ok'] == true) {
         if (!mounted) return;
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Contraseña actualizada con éxito"),
@@ -77,24 +156,54 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
             behavior: SnackBarBehavior.floating,
           ),
         );
-        Navigator.pop(context);
+
+        Navigator.of(context).maybePop();
       } else {
-        setState(() => _errorMessage = response.data['error']);
+        setState(() {
+          _errorMessage = data['error']?.toString() ?? 'Error al actualizar';
+        });
       }
+    } on DioException catch (e) {
+      setState(() {
+        _errorMessage = _getDioError(e, "Error al actualizar");
+      });
     } catch (e) {
-      setState(() => _errorMessage = "Error al actualizar");
+      setState(() {
+        _errorMessage = "Error inesperado: $e";
+      });
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
+  }
+
+  String _getDioError(DioException e, String defaultMessage) {
+    final data = e.response?.data;
+
+    try {
+      final parsed = _parseResponse(data);
+      if (parsed['error'] != null) {
+        return parsed['error'].toString();
+      }
+    } catch (_) {}
+
+    if (data is String && data.trim().isNotEmpty) {
+      return data;
+    }
+
+    return e.message ?? defaultMessage;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Extendemos el body detrás del AppBar para el gradiente
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Recuperar Acceso', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Recuperar Acceso',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         foregroundColor: Colors.white,
@@ -106,7 +215,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [primaryBlue, Color(0xFF001A33)],
+            colors: [
+              primaryBlue,
+              Color(0xFF001A33),
+            ],
           ),
         ),
         child: Center(
@@ -114,11 +226,11 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
             controller: _pageCtrl,
             physics: const NeverScrollableScrollPhysics(),
             children: [
-              // PASO 1: CORREO
               _buildStepCard(
                 icon: Icons.mark_email_read_rounded,
                 title: "Verifica tu Identidad",
-                subtitle: "Enviaremos un código de seguridad a tu correo institucional.",
+                subtitle:
+                    "Enviaremos un código de seguridad a tu correo institucional.",
                 child: Column(
                   children: [
                     _buildInputField(
@@ -128,11 +240,13 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                       icon: Icons.email_outlined,
                     ),
                     const SizedBox(height: 30),
-                    _buildActionButton("ENVIAR CÓDIGO", _solicitarCodigo),
+                    _buildActionButton(
+                      "ENVIAR CÓDIGO",
+                      _solicitarCodigo,
+                    ),
                   ],
                 ),
               ),
-              // PASO 2: CÓDIGO Y PASS
               _buildStepCard(
                 icon: Icons.security_rounded,
                 title: "Nueva Contraseña",
@@ -154,12 +268,25 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                       isPassword: true,
                     ),
                     const SizedBox(height: 30),
-                    _buildActionButton("ACTUALIZAR CLAVE", _cambiarPassword),
+                    _buildActionButton(
+                      "ACTUALIZAR CLAVE",
+                      _cambiarPassword,
+                    ),
                     TextButton(
-                      onPressed: () => _pageCtrl.previousPage(
-                        duration: const Duration(milliseconds: 300), curve: Curves.ease),
-                      child: const Text("Volver a enviar código", style: TextStyle(color: accentBlue)),
-                    )
+                      onPressed: _loading
+                          ? null
+                          : () {
+                              setState(() => _errorMessage = null);
+                              _pageCtrl.previousPage(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.ease,
+                              );
+                            },
+                      child: const Text(
+                        "Volver a enviar código",
+                        style: TextStyle(color: accentBlue),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -170,13 +297,17 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     );
   }
 
-  Widget _buildStepCard({required IconData icon, required String title, required String subtitle, required Widget child}) {
+  Widget _buildStepCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Widget child,
+  }) {
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
           const SizedBox(height: 100),
-          // Icono con resplandor
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -184,10 +315,13 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white24),
             ),
-            child: Icon(icon, size: 60, color: Colors.white),
+            child: Icon(
+              icon,
+              size: 60,
+              color: Colors.white,
+            ),
           ),
           const SizedBox(height: 30),
-          // Card Blanca
           Container(
             constraints: const BoxConstraints(maxWidth: 400),
             padding: const EdgeInsets.all(32),
@@ -195,15 +329,32 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
               color: Colors.white,
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
               ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: primaryBlue)),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: primaryBlue,
+                  ),
+                ),
                 const SizedBox(height: 8),
-                Text(subtitle, style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 14,
+                  ),
+                ),
                 const SizedBox(height: 25),
                 if (_errorMessage != null) _buildErrorBanner(),
                 child,
@@ -226,29 +377,72 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: primaryBlue, fontWeight: FontWeight.bold, fontSize: 13)),
+        Text(
+          label,
+          style: const TextStyle(
+            color: primaryBlue,
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+          ),
+        ),
         const SizedBox(height: 8),
         TextField(
           controller: controller,
           obscureText: isPassword && !_isPasswordVisible,
-          style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
+          keyboardType:
+              isPassword ? TextInputType.visiblePassword : TextInputType.text,
+          textInputAction: TextInputAction.next,
+          enableSuggestions: !isPassword,
+          autocorrect: !isPassword,
+          style: const TextStyle(
+            color: Colors.black87,
+            fontWeight: FontWeight.w600,
+          ),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-            prefixIcon: Icon(icon, color: primaryBlue, size: 20),
-            suffixIcon: isPassword 
-              ? IconButton(
-                  icon: Icon(_isPasswordVisible ? Icons.visibility : Icons.visibility_off, color: Colors.grey),
-                  onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
-                ) 
-              : null,
+            hintStyle: TextStyle(
+              color: Colors.grey.shade400,
+              fontSize: 14,
+            ),
+            prefixIcon: Icon(
+              icon,
+              color: primaryBlue,
+              size: 20,
+            ),
+            suffixIcon: isPassword
+                ? IconButton(
+                    icon: Icon(
+                      _isPasswordVisible
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                      color: Colors.grey,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isPasswordVisible = !_isPasswordVisible;
+                      });
+                    },
+                  )
+                : null,
             filled: true,
             fillColor: Colors.grey.shade100,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(15),
+              borderSide: BorderSide.none,
+            ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Colors.grey.shade200)),
+              borderRadius: BorderRadius.circular(15),
+              borderSide: BorderSide(
+                color: Colors.grey.shade200,
+              ),
+            ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: primaryBlue, width: 2)),
+              borderRadius: BorderRadius.circular(15),
+              borderSide: const BorderSide(
+                color: primaryBlue,
+                width: 2,
+              ),
+            ),
           ),
         ),
       ],
@@ -265,12 +459,27 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           foregroundColor: Colors.white,
           elevation: 5,
           shadowColor: primaryBlue.withOpacity(0.4),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
         ),
         onPressed: _loading ? null : onPressed,
-        child: _loading 
-          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)) 
-          : Text(text, style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1)),
+        child: _loading
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 3,
+                ),
+              )
+            : Text(
+                text,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.1,
+                ),
+              ),
       ),
     );
   }
@@ -279,12 +488,31 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     return Container(
       padding: const EdgeInsets.all(12),
       margin: const EdgeInsets.only(bottom: 20),
-      decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.red.shade100)),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.red.shade100,
+        ),
+      ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, color: Colors.red, size: 20),
+          const Icon(
+            Icons.error_outline,
+            color: Colors.red,
+            size: 20,
+          ),
           const SizedBox(width: 10),
-          Expanded(child: Text(_errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold))),
+          Expanded(
+            child: Text(
+              _errorMessage!,
+              style: const TextStyle(
+                color: Colors.red,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
         ],
       ),
     );
