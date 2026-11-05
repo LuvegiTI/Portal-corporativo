@@ -10,7 +10,7 @@ class SessionTimeoutWrapper extends StatefulWidget {
     super.key,
     required this.child,
     required this.onTimeout,
-    this.duration = const Duration(minutes: 5), // Configurado a 5 min
+    this.duration = const Duration(minutes: 15), // Configurado a 15 min
   });
 
   @override

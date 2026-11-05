@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/admin_catalogos_acceso_service.dart';
+import '../services/auditoria_service.dart';
+import '../utils/mensaje_error.dart';
 
 class AdminCatalogosAccesoPage extends StatefulWidget {
   final String token;
@@ -11,9 +13,9 @@ class AdminCatalogosAccesoPage extends StatefulWidget {
       _AdminCatalogosAccesoPageState();
 }
 
-class _AdminCatalogosAccesoPageState
-    extends State<AdminCatalogosAccesoPage> {
+class _AdminCatalogosAccesoPageState extends State<AdminCatalogosAccesoPage> {
   final _api = AdminCatalogosAccesoService();
+  final _auditoria = AuditoriaService();
   List<Map<String, dynamic>> _areas = [];
   List<Map<String, dynamic>> _permisos = [];
   bool _loading = true;
@@ -26,11 +28,26 @@ class _AdminCatalogosAccesoPageState
 
   String _normalizarCodigo(String texto) {
     const reemplazos = {
-      'Á': 'A', 'À': 'A', 'Ä': 'A', 'Â': 'A',
-      'É': 'E', 'È': 'E', 'Ë': 'E', 'Ê': 'E',
-      'Í': 'I', 'Ì': 'I', 'Ï': 'I', 'Î': 'I',
-      'Ó': 'O', 'Ò': 'O', 'Ö': 'O', 'Ô': 'O',
-      'Ú': 'U', 'Ù': 'U', 'Ü': 'U', 'Û': 'U',
+      'Á': 'A',
+      'À': 'A',
+      'Ä': 'A',
+      'Â': 'A',
+      'É': 'E',
+      'È': 'E',
+      'Ë': 'E',
+      'Ê': 'E',
+      'Í': 'I',
+      'Ì': 'I',
+      'Ï': 'I',
+      'Î': 'I',
+      'Ó': 'O',
+      'Ò': 'O',
+      'Ö': 'O',
+      'Ô': 'O',
+      'Ú': 'U',
+      'Ù': 'U',
+      'Ü': 'U',
+      'Û': 'U',
       'Ñ': 'N',
     };
 
@@ -56,7 +73,7 @@ class _AdminCatalogosAccesoPageState
         _permisos = result[1];
       });
     } catch (e) {
-      if (mounted) _mensaje(e.toString(), error: true);
+      if (mounted) _mensaje(MensajeError.desdeExcepcion(e), error: true);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -84,9 +101,6 @@ class _AdminCatalogosAccesoPageState
     final nombre = TextEditingController(
       text: item?['nombre']?.toString() ?? '',
     );
-    final descripcion = TextEditingController(
-      text: item?['descripcion']?.toString() ?? '',
-    );
 
     void actualizarCodigo() {
       if (esNuevo) codigo.text = _normalizarCodigo(nombre.text);
@@ -99,8 +113,8 @@ class _AdminCatalogosAccesoPageState
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: Text(esNuevo ? 'Nueva área' : 'Editar área'),
-        content: SizedBox(
-          width: 420,
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
           child: Form(
             key: formKey,
             child: Column(
@@ -134,15 +148,6 @@ class _AdminCatalogosAccesoPageState
                       ? 'El nombre no genera un identificador válido.'
                       : null,
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: descripcion,
-                  maxLines: 2,
-                  decoration: const InputDecoration(
-                    labelText: 'Descripción (opcional)',
-                    hintText: 'Personal perteneciente al área...',
-                  ),
-                ),
               ],
             ),
           ),
@@ -166,7 +171,6 @@ class _AdminCatalogosAccesoPageState
     if (ok != true) {
       codigo.dispose();
       nombre.dispose();
-      descripcion.dispose();
       return;
     }
 
@@ -175,39 +179,52 @@ class _AdminCatalogosAccesoPageState
         await _api.crearArea(widget.token, {
           'codigo': codigo.text,
           'nombre': nombre.text.trim(),
-          'descripcion': descripcion.text.trim(),
         });
         _mensaje('Área creada correctamente.');
+        _registrar(
+          'CREAR_AREA',
+          'area',
+          '${nombre.text.trim()} (${codigo.text})',
+        );
       } else {
         await _api.editarArea(widget.token, {
           'id': item['id'],
           'nombre': nombre.text.trim(),
-          'descripcion': descripcion.text.trim(),
         });
         _mensaje('Área actualizada correctamente.');
+        _registrar(
+          'EDITAR_AREA',
+          'area',
+          'area_id=${item['id']} ${nombre.text.trim()}',
+        );
       }
       await _cargar();
     } catch (e) {
-      _mensaje(e.toString(), error: true);
+      _mensaje(MensajeError.desdeExcepcion(e), error: true);
     } finally {
       codigo.dispose();
       nombre.dispose();
-      descripcion.dispose();
     }
   }
 
   Future<void> _permisoDialog([Map<String, dynamic>? item]) async {
     final formKey = GlobalKey<FormState>();
-    final codigo = TextEditingController(text: item?['codigo']?.toString() ?? '');
-    final descripcion = TextEditingController(text: item?['descripcion']?.toString() ?? '');
-    final modulo = TextEditingController(text: item?['modulo']?.toString() ?? '');
+    final codigo = TextEditingController(
+      text: item?['codigo']?.toString() ?? '',
+    );
+    final descripcion = TextEditingController(
+      text: item?['descripcion']?.toString() ?? '',
+    );
+    final modulo = TextEditingController(
+      text: item?['modulo']?.toString() ?? '',
+    );
     final ok = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: Text(item == null ? 'Nuevo permiso / módulo' : 'Editar permiso'),
-        content: SizedBox(
-          width: 420,
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
           child: Form(
             key: formKey,
             child: Column(
@@ -216,17 +233,26 @@ class _AdminCatalogosAccesoPageState
                 TextFormField(
                   controller: modulo,
                   textCapitalization: TextCapitalization.characters,
-                  decoration: const InputDecoration(labelText: 'Módulo', hintText: 'RDR'),
-                  validator: (v) => _normalizarCodigo(v ?? '').isEmpty ? 'Ingresa el módulo.' : null,
+                  decoration: const InputDecoration(
+                    labelText: 'Módulo',
+                    hintText: 'RDR',
+                  ),
+                  validator: (v) => _normalizarCodigo(v ?? '').isEmpty
+                      ? 'Ingresa el módulo.'
+                      : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: codigo,
                   enabled: item == null,
                   textCapitalization: TextCapitalization.characters,
-                  decoration: const InputDecoration(labelText: 'Código del permiso'),
+                  decoration: const InputDecoration(
+                    labelText: 'Código del permiso',
+                  ),
                   validator: item == null
-                      ? (v) => _normalizarCodigo(v ?? '').isEmpty ? 'Ingresa el código.' : null
+                      ? (v) => _normalizarCodigo(v ?? '').isEmpty
+                            ? 'Ingresa el código.'
+                            : null
                       : null,
                 ),
                 const SizedBox(height: 12),
@@ -234,14 +260,19 @@ class _AdminCatalogosAccesoPageState
                   controller: descripcion,
                   maxLines: 2,
                   decoration: const InputDecoration(labelText: 'Descripción'),
-                  validator: (v) => v == null || v.trim().isEmpty ? 'Ingresa la descripción.' : null,
+                  validator: (v) => v == null || v.trim().isEmpty
+                      ? 'Ingresa la descripción.'
+                      : null,
                 ),
               ],
             ),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
           FilledButton(
             onPressed: () {
               if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
@@ -260,13 +291,19 @@ class _AdminCatalogosAccesoPageState
       if (item == null) {
         data['codigo'] = _normalizarCodigo(codigo.text);
         await _api.crearPermiso(widget.token, data);
+        _registrar('CREAR_PERMISO', 'permiso', data['codigo']);
       } else {
         data['id'] = item['id'];
         await _api.editarPermiso(widget.token, data);
+        _registrar(
+          'EDITAR_PERMISO',
+          'permiso',
+          'id=${item['id']} ${data['modulo']}',
+        );
       }
       await _cargar();
     } catch (e) {
-      _mensaje(e.toString(), error: true);
+      _mensaje(MensajeError.desdeExcepcion(e), error: true);
     } finally {
       codigo.dispose();
       descripcion.dispose();
@@ -276,83 +313,182 @@ class _AdminCatalogosAccesoPageState
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xFFF5F7FA),
-        appBar: AppBar(
-          title: const Text('ÁREAS, MÓDULOS Y PERMISOS'),
-          backgroundColor: Colors.white,
-        ),
-        body: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : LayoutBuilder(
-                builder: (context, c) {
-                  final areas = _panel(
-                    'Áreas', Icons.apartment, 'Nueva área', () => _areaDialog(),
-                    _areas.map((e) => _tile(
-                      e['nombre'].toString(), e['codigo'].toString(),
-                      _activo(e['activo']), '${e['usuarios']} usuario(s)',
-                      () => _areaDialog(e), () async {
-                        try {
-                          await _api.toggleArea(widget.token, int.parse(e['id'].toString()));
-                          await _cargar();
-                        } catch (x) { _mensaje(x.toString(), error: true); }
-                      },
-                    )).toList(),
-                  );
-                  final permisos = _panel(
-                    'Módulos y permisos', Icons.security, 'Nuevo permiso', () => _permisoDialog(),
-                    _permisos.map((e) => _tile(
-                      e['codigo'].toString(), e['modulo'].toString(),
-                      _activo(e['activo']), e['descripcion'].toString(),
-                      () => _permisoDialog(e), () async {
-                        try {
-                          await _api.togglePermiso(widget.token, int.parse(e['id'].toString()));
-                          await _cargar();
-                        } catch (x) { _mensaje(x.toString(), error: true); }
-                      },
-                    )).toList(),
-                  );
-                  return c.maxWidth < 900
-                      ? ListView(padding: const EdgeInsets.all(16), children: [areas, const SizedBox(height: 16), permisos])
-                      : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: areas), Expanded(child: permisos)]);
-                },
-              ),
-      );
+    backgroundColor: const Color(0xFFF5F7FA),
+    appBar: AppBar(
+      title: const Text('ÁREAS, MÓDULOS Y PERMISOS'),
+      backgroundColor: Colors.white,
+    ),
+    body: _loading
+        ? const Center(child: CircularProgressIndicator())
+        : LayoutBuilder(
+            builder: (context, c) {
+              final areas = _panel(
+                'Áreas',
+                Icons.apartment,
+                'Nueva área',
+                () => _areaDialog(),
+                _areas
+                    .map(
+                      (e) => _tile(
+                        e['nombre'].toString(),
+                        e['codigo'].toString(),
+                        _activo(e['activo']),
+                        '${e['usuarios']} usuario(s)',
+                        () => _areaDialog(e),
+                        () async {
+                          try {
+                            await _api.toggleArea(
+                              widget.token,
+                              int.parse(e['id'].toString()),
+                            );
+                            _registrar(
+                              'TOGGLE_AREA',
+                              'area',
+                              'area_id=${e['id']} activo=${!_activo(e['activo'])}',
+                            );
+                            await _cargar();
+                          } catch (x) {
+                            _mensaje(x.toString(), error: true);
+                          }
+                        },
+                      ),
+                    )
+                    .toList(),
+              );
+              final permisos = _panel(
+                'Módulos y permisos',
+                Icons.security,
+                'Nuevo permiso',
+                () => _permisoDialog(),
+                _permisos
+                    .map(
+                      (e) => _tile(
+                        e['codigo'].toString(),
+                        e['modulo'].toString(),
+                        _activo(e['activo']),
+                        e['descripcion'].toString(),
+                        () => _permisoDialog(e),
+                        () async {
+                          try {
+                            await _api.togglePermiso(
+                              widget.token,
+                              int.parse(e['id'].toString()),
+                            );
+                            _registrar(
+                              'TOGGLE_PERMISO',
+                              'permiso',
+                              'permiso_id=${e['id']} activo=${!_activo(e['activo'])}',
+                            );
+                            await _cargar();
+                          } catch (x) {
+                            _mensaje(x.toString(), error: true);
+                          }
+                        },
+                      ),
+                    )
+                    .toList(),
+              );
+              return c.maxWidth < 900
+                  ? ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: [areas, const SizedBox(height: 16), permisos],
+                    )
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: areas),
+                        Expanded(child: permisos),
+                      ],
+                    );
+            },
+          ),
+  );
 
   bool _activo(dynamic value) =>
       value == true || value == 1 || value.toString() == '1';
 
-  Widget _panel(String title, IconData icon, String button, VoidCallback add,
-          List<Widget> items) =>
-      SizedBox(
-        height: 650,
-        child: Card(
-          margin: const EdgeInsets.all(16),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(children: [
-              Row(children: [
+  Widget _panel(
+    String title,
+    IconData icon,
+    String button,
+    VoidCallback add,
+    List<Widget> items,
+  ) => SizedBox(
+    height: 650,
+    child: Card(
+      margin: const EdgeInsets.all(16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
+              children: [
                 Icon(icon, color: const Color(0xFF003366)),
                 const SizedBox(width: 10),
-                Expanded(child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-                FilledButton.icon(onPressed: add, icon: const Icon(Icons.add), label: Text(button)),
-              ]),
-              const Divider(height: 28),
-              Expanded(child: items.isEmpty ? const Center(child: Text('Sin registros')) : ListView(children: items)),
-            ]),
-          ),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                FilledButton.icon(
+                  onPressed: add,
+                  icon: const Icon(Icons.add),
+                  label: Text(button),
+                ),
+              ],
+            ),
+            const Divider(height: 28),
+            Expanded(
+              child: items.isEmpty
+                  ? const Center(child: Text('Sin registros'))
+                  : ListView(children: items),
+            ),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 
-  Widget _tile(String title, String badge, bool active, String subtitle,
-          VoidCallback edit, VoidCallback toggle) =>
-      ListTile(
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-        subtitle: Text('$badge · $subtitle'),
-        leading: Icon(active ? Icons.check_circle : Icons.pause_circle,
-            color: active ? Colors.green : Colors.grey),
-        trailing: Wrap(children: [
-          IconButton(onPressed: edit, icon: const Icon(Icons.edit_outlined)),
-          IconButton(onPressed: toggle, icon: Icon(active ? Icons.toggle_on : Icons.toggle_off, size: 32)),
-        ]),
-      );
+  Widget _tile(
+    String title,
+    String badge,
+    bool active,
+    String subtitle,
+    VoidCallback edit,
+    VoidCallback toggle,
+  ) => ListTile(
+    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+    subtitle: Text('$badge · $subtitle'),
+    leading: Icon(
+      active ? Icons.check_circle : Icons.pause_circle,
+      color: active ? Colors.green : Colors.grey,
+    ),
+    trailing: Wrap(
+      children: [
+        IconButton(onPressed: edit, icon: const Icon(Icons.edit_outlined)),
+        IconButton(
+          onPressed: toggle,
+          icon: Icon(active ? Icons.toggle_on : Icons.toggle_off, size: 32),
+        ),
+      ],
+    ),
+  );
+
+  // Registra actividad en la bitácora sin bloquear la UI.
+  void _registrar(String accion, String entidad, String detalle) {
+    try {
+      _auditoria
+          .registrarActividad(
+            widget.token,
+            accion: accion,
+            entidad: entidad,
+            detalle: detalle,
+          )
+          .catchError((_) {});
+    } catch (_) {}
+  }
 }

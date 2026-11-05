@@ -50,15 +50,13 @@ class ReporteLineasVentaService {
     final json = response.data;
 
     if (json['ok'] != true) {
-      throw Exception(json['error'] ?? 'Error al obtener reporte.');
+      throw Exception(
+        json['mensaje'] ?? json['error'] ?? 'Error al obtener reporte.',
+      );
     }
 
     final rows = (json['data'] as List)
-        .map(
-          (e) => ReporteLineaVenta.fromJson(
-            Map<String, dynamic>.from(e),
-          ),
-        )
+        .map((e) => ReporteLineaVenta.fromJson(Map<String, dynamic>.from(e)))
         .toList();
 
     return ReporteLineasVentaResponse(

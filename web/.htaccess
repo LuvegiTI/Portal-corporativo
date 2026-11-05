@@ -1,0 +1,143 @@
+RewriteEngine On
+RewriteBase /
+
+# 1. FORZAR HTTPS (Manteniendo tus reglas originales)
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=307]
+
+# 2. PASAR HEADER AUTHORIZATION A PHP
+RewriteCond %{HTTP:Authorization} ^(.*)
+RewriteRule .* - [e:HTTP_AUTHORIZATION:%1]
+
+# 3. SOPORTE PARA RUTAS DE FLUTTER (SOLUCIÓN AL ERROR 404)
+# Si el usuario entra a /01, /02, etc., redirige internamente al index.html
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.html [L]
+
+# 4. POLÍTICAS DE CORS (SOLUCIÓN AL LOGO INVISIBLE)
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+    Header set Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+    
+    # Esto asegura que el navegador siempre intente validar si hay cambios
+    <FilesMatch "\.(webp|png|jpg|jpeg|gif|ico)$">
+        Header set Cache-Control "no-cache, must-revalidate"
+    </FilesMatch>
+</IfModule>
+
+# 5. COMPRESIÓN GZIP/BROTLI PARA FLUTTER WEB
+# Reduce el tráfico de main.dart.wasm / main.dart.js / canvaskit (~60-70%)
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/css text/xml
+    AddOutputFilterByType DEFLATE text/javascript application/javascript
+    AddOutputFilterByType DEFLATE application/json application/xml
+    AddOutputFilterByType DEFLATE application/wasm application/octet-stream
+    AddOutputFilterByType DEFLATE image/svg+xml
+
+    BrowserMatch ^Mozilla/4 gzip-only-text/html
+    BrowserMatch ^Mozilla/4\.0[678] no-gzip
+    BrowserMatch \bMSIE !no-gzip !gzip-only-text/html
+    SetEnvIfNoCase Request_URI \.no_gzip$ no-gzip
+</IfModule>
+
+# Si el servidor soporta Brotli, el anterior y este conviven sin problema
+<IfModule mod_brotli.c>
+    AddOutputFilterByType BROTLI_COMPRESS text/html text/plain text/css text/xml
+    AddOutputFilterByType BROTLI_COMPRESS text/javascript application/javascript
+    AddOutputFilterByType BROTLI_COMPRESS application/json application/xml
+    AddOutputFilterByType BROTLI_COMPRESS application/wasm application/octet-stream
+    AddOutputFilterByType BROTLI_COMPRESS image/svg+xml
+</IfModule>
+
+# 6. CACHÉ PARA ARCHIVOS DE FLUTTER
+# main.dart.js se carga SIN query string (el ?v= solo va en flutter_bootstrap.js),
+# por eso NO debe cachearse immutable: si no, el navegador nunca vuelve a pedirlo
+# tras un nuevo deploy. Se sirve con no-cache para que SIEMPRE revalide con el server.
+<IfModule mod_headers.c>
+    <FilesMatch "\.(wasm|mjs|js|gz)$">
+        Header set Cache-Control "no-cache, must-revalidate"
+    </FilesMatch>
+    <FilesMatch "\.(css|ttf|otf|svg)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+    <FilesMatch "\.(html)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+    <FilesMatch "\.(json)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+</IfModule>
+
+# 7. PRECOMPRESIÓN GZIP MANUAL (ALGUNOS SERVICIOS IGNORAN WASM EN MOD_DEFLATE)
+# Algunos hosting (p.ej. LiteSpeed) no comprimen application/wasm con el bloque 5.
+# Aquí servimos el .gz pre-generado si el archivo existe y el navegador acepta gzip.
+<IfModule mod_rewrite.c>
+    RewriteCond %{HTTP:Accept-Encoding} gzip
+    RewriteCond %{REQUEST_URI} \.(wasm|mjs|js)$
+    RewriteCond %{REQUEST_FILENAME}\.gz -f
+    RewriteRule ^(.*)$ $1.gz [L]
+</IfModule>
+
+# El .gz que se sirve arriba debe llevar Content-Encoding y Content-Type correctos
+<IfModule mod_headers.c>
+    <FilesMatch "\.wasm\.gz$">
+        Header set Content-Type application/wasm
+        Header set Content-Encoding gzip
+        Header set Vary Accept-Encoding
+    </FilesMatch>
+    <FilesMatch "\.mjs\.gz$">
+        Header set Content-Type text/javascript
+        Header set Content-Encoding gzip
+        Header set Vary Accept-Encoding
+    </FilesMatch>
+    <FilesMatch "\.js\.gz$">
+        Header set Content-Type application/javascript
+        Header set Content-Encoding gzip
+        Header set Vary Accept-Encoding
+    </FilesMatch>
+</IfModule>
+
+# MIME para que el .gz se identifique con el tipo del archivo original
+<IfModule mod_mime.c>
+    AddType application/wasm .wasm.gz
+    AddType text/javascript .mjs.gz
+    AddType application/javascript .js.gz
+</IfModule>
+
+# 8. CABECERAS DE SEGURIDAD (frontend web)
+# El bloque equivalente ya existe en api_luvegi/htaccess; aqui faltaba.
+# NO se copia X-XSS-Protection: esta obsoleta y los navegadores modernos la ignoran.
+<IfModule mod_headers.c>
+    # Fuerza HTTPS de forma permanente (sin "preload": el registro en la
+    # lista de preload es irreversible y no debe decidirse desde aqui).
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+    # Evita que un texto inyectado en la pagina se convierta en script.
+    Header always set X-Content-Type-Options "nosniff"
+
+    # Impide que el portal se embeba en un iframe de otro sitio (phishing).
+    Header always set X-Frame-Options "SAMEORIGIN"
+
+    # Al saltar a un sitio externo no se envia la URL completa, solo el dominio.
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # APIs del navegador que el portal no usa.
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+
+    # CSP en modo REPORT-ONLY a proposito: no bloquea nada, solo reporta
+    # violaciones en la consola del navegador. Flutter web necesita
+    # 'unsafe-eval' / 'wasm-unsafe-eval' y descarga CanvasKit de gstatic.com,
+    # asi que activarla en modo bloqueante sin medir primero puede dejar la
+    # app en blanco. Cuando se verifiquen 0 violaciones, cambiar el nombre
+    # de la cabecera a Content-Security-Policy.
+    Header always set Content-Security-Policy-Report-Only "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.gstatic.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://portal.luvegi.com wss://portal.luvegi.com; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
+</IfModule>
+
+# php -- BEGIN cPanel-generated handler, do not edit
+# Set the “ea-php82” package as the default “PHP” programming language.
+<IfModule mime_module>
+  AddHandler application/x-httpd-ea-php82 .php .php8 .phtml
+</IfModule>
+# php -- END cPanel-generated handler, do not edit

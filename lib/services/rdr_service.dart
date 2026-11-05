@@ -15,10 +15,10 @@ class RdrService {
   static const String baseUrl = 'https://portal.luvegi.com/api_luvegi';
 
   Map<String, String> _headers(String token) => {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-      };
+    'Content-Type': 'application/json; charset=utf-8',
+    'Accept': 'application/json',
+    'Authorization': 'Bearer $token',
+  };
 
   Future<Map<String, dynamic>> registrarRdr({
     required String token,
@@ -32,14 +32,9 @@ class RdrService {
     return _decode(response);
   }
 
-  Future<Map<String, dynamic>> obtenerMiPerfil({
-    required String token,
-  }) async {
+  Future<Map<String, dynamic>> obtenerMiPerfil({required String token}) async {
     final response = await http
-        .get(
-          Uri.parse('$baseUrl/mi_perfil_rdr.php'),
-          headers: _headers(token),
-        )
+        .get(Uri.parse('$baseUrl/mi_perfil_rdr.php'), headers: _headers(token))
         .timeout(const Duration(seconds: 15));
     return _decode(response);
   }
@@ -59,9 +54,7 @@ class RdrService {
     };
 
     final response = await http.get(
-      Uri.parse('$baseUrl/consultar_rdr.php').replace(
-        queryParameters: query,
-      ),
+      Uri.parse('$baseUrl/consultar_rdr.php').replace(queryParameters: query),
       headers: _headers(token),
     );
     return _decode(response);
@@ -72,12 +65,9 @@ class RdrService {
     required String codigo,
   }) async {
     final response = await http.get(
-      Uri.parse('$baseUrl/detalle_rdr.php').replace(
-        queryParameters: {
-          'codigo': codigo,
-          'codigo_redir': codigo,
-        },
-      ),
+      Uri.parse(
+        '$baseUrl/detalle_rdr.php',
+      ).replace(queryParameters: {'codigo': codigo, 'codigo_redir': codigo}),
       headers: _headers(token),
     );
     return _decode(response);
@@ -109,14 +99,10 @@ class RdrService {
     return _decode(response);
   }
 
-  Future<bool> puedeAdministrarAtenciones({
-    required String token,
-  }) async {
+  Future<bool> puedeAdministrarAtenciones({required String token}) async {
     try {
       final response = await http.get(
-        Uri.parse(
-          '$baseUrl/admin_atenciones_rdr.php?action=verificar',
-        ),
+        Uri.parse('$baseUrl/admin_atenciones_rdr.php?action=verificar'),
         headers: _headers(token),
       );
       final body = _decode(response);
@@ -160,12 +146,9 @@ class RdrService {
     required String codigo,
   }) async {
     final response = await http.get(
-      Uri.parse('$baseUrl/admin_atenciones_rdr.php').replace(
-        queryParameters: {
-          'action': 'historial',
-          'codigo': codigo,
-        },
-      ),
+      Uri.parse(
+        '$baseUrl/admin_atenciones_rdr.php',
+      ).replace(queryParameters: {'action': 'historial', 'codigo': codigo}),
       headers: _headers(token),
     );
     final body = _decode(response);
@@ -199,9 +182,7 @@ class RdrService {
     Map<String, dynamic> body;
     try {
       final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-      body = decoded is Map<String, dynamic>
-          ? decoded
-          : <String, dynamic>{};
+      body = decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
     } catch (_) {
       throw RdrApiException(
         'El servidor devolvió una respuesta inválida.',
@@ -212,17 +193,16 @@ class RdrService {
     if (response.statusCode < 200 ||
         response.statusCode >= 300 ||
         body['ok'] != true) {
-      final baseMessage = (body['mensaje'] ??
-              body['error'] ??
-              'No se pudo completar la operación.')
-          .toString();
+      final baseMessage =
+          (body['mensaje'] ??
+                  body['error'] ??
+                  'No se pudo completar la operación.')
+              .toString();
       final diagnostico = body['diagnostico'];
       final detalle = diagnostico is Map
           ? (diagnostico['detalle'] ?? '').toString().trim()
           : '';
-      final message = detalle.isEmpty
-          ? baseMessage
-          : '$baseMessage\n$detalle';
+      final message = detalle.isEmpty ? baseMessage : '$baseMessage\n$detalle';
       throw RdrApiException(message, statusCode: response.statusCode);
     }
     return body;

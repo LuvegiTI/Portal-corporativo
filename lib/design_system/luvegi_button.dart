@@ -5,12 +5,7 @@ import '../theme/luvegi_radius.dart';
 import '../theme/luvegi_spacing.dart';
 import '../theme/luvegi_text.dart';
 
-enum LuvegiButtonType {
-  primary,
-  secondary,
-  outline,
-  danger,
-}
+enum LuvegiButtonType { primary, secondary, outline, danger }
 
 class LuvegiButton extends StatelessWidget {
   final String text;
@@ -98,9 +93,7 @@ class LuvegiButton extends StatelessWidget {
           disabledBackgroundColor: LuvegiColors.border,
           disabledForegroundColor: LuvegiColors.textHint,
           elevation: 0,
-          padding: const EdgeInsets.symmetric(
-            horizontal: LuvegiSpacing.lg,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: LuvegiSpacing.lg),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(LuvegiRadius.sm),
             side: BorderSide(color: borderColor),
@@ -123,7 +116,13 @@ class LuvegiButton extends StatelessWidget {
                     Icon(icon, size: 18),
                     const SizedBox(width: LuvegiSpacing.sm),
                   ],
-                  Text(text),
+                  Flexible(
+                    child: Text(
+                      text,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ],
               ),
       ),

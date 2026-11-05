@@ -8,6 +8,7 @@ import '../design_system/luvegi_button.dart';
 import '../design_system/luvegi_card.dart';
 import '../design_system/luvegi_text_field.dart';
 import '../services/importar_solper.dart';
+import '../services/auditoria_service.dart';
 import '../theme/luvegi_colors.dart';
 import '../theme/luvegi_radius.dart';
 import '../theme/luvegi_spacing.dart';
@@ -16,10 +17,7 @@ import '../theme/luvegi_text.dart';
 class ImportarPrPage extends StatefulWidget {
   final String token;
 
-  const ImportarPrPage({
-    super.key,
-    required this.token,
-  });
+  const ImportarPrPage({super.key, required this.token});
 
   @override
   State<ImportarPrPage> createState() => _ImportarPrPageState();
@@ -28,6 +26,7 @@ class ImportarPrPage extends StatefulWidget {
 class _ImportarPrPageState extends State<ImportarPrPage> {
   final TextEditingController _prCtrl = TextEditingController();
   final ImportarPrService _service = ImportarPrService();
+  final AuditoriaService _auditoria = AuditoriaService();
 
   bool _loading = false;
   String _archivoNombre = 'Ningún archivo seleccionado';
@@ -105,9 +104,7 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Excel cargado: ${lineas.length} líneas válidas',
-          ),
+          content: Text('Excel cargado: ${lineas.length} líneas válidas'),
         ),
       );
     } catch (e) {
@@ -121,9 +118,7 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            e.toString().replaceAll('Exception:', '').trim(),
-          ),
+          content: Text(e.toString().replaceAll('Exception:', '').trim()),
         ),
       );
     }
@@ -143,9 +138,7 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
     int col(String name) {
       final target = _normalizarHeader(name);
 
-      return headers.indexWhere(
-        (h) => _normalizarHeader(h) == target,
-      );
+      return headers.indexWhere((h) => _normalizarHeader(h) == target);
     }
 
     final cProducto = col('Código de Producto');
@@ -213,10 +206,7 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
     }
 
     if (_lineas.isEmpty) {
-      _mostrarMensaje(
-        'Primero selecciona un Excel válido.',
-        error: true,
-      );
+      _mostrarMensaje('Primero selecciona un Excel válido.', error: true);
       return;
     }
 
@@ -244,6 +234,18 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
       _mostrarMensaje(
         'Importación completada. Líneas creadas: ${res['creadas']}',
       );
+
+      try {
+        _auditoria
+            .registrarActividad(
+              widget.token,
+              accion: 'IMPORTAR_SOLPED',
+              entidad: 'solped',
+              detalle:
+                  'pr=$pr creadas=${res['creadas']} errores=${res['errores_count']}',
+            )
+            .catchError((_) {});
+      } catch (_) {}
     } catch (e) {
       if (!mounted) return;
 
@@ -262,15 +264,11 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
     }
   }
 
-  void _mostrarMensaje(
-    String mensaje, {
-    bool error = false,
-  }) {
+  void _mostrarMensaje(String mensaje, {bool error = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(mensaje),
-        backgroundColor:
-            error ? LuvegiColors.error : LuvegiColors.secondary,
+        backgroundColor: error ? LuvegiColors.error : LuvegiColors.secondary,
       ),
     );
   }
@@ -282,8 +280,7 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
       return LuvegiColors.error;
     }
 
-    if (estado.contains('completada') ||
-        estado.contains('correctamente')) {
+    if (estado.contains('completada') || estado.contains('correctamente')) {
       return LuvegiColors.success;
     }
 
@@ -301,8 +298,7 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
       return Icons.error_outline_rounded;
     }
 
-    if (estado.contains('completada') ||
-        estado.contains('correctamente')) {
+    if (estado.contains('completada') || estado.contains('correctamente')) {
       return Icons.check_circle_outline_rounded;
     }
 
@@ -326,14 +322,10 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
 
     return Scaffold(
       backgroundColor: LuvegiColors.background,
-      appBar: AppBar(
-        title: const Text('Importador de Solicitudes de Compra'),
-      ),
+      appBar: AppBar(title: const Text('Importador de Solicitudes de Compra')),
       body: Center(
         child: SingleChildScrollView(
-          padding: EdgeInsets.all(
-            mobile ? LuvegiSpacing.md : LuvegiSpacing.lg,
-          ),
+          padding: EdgeInsets.all(mobile ? LuvegiSpacing.md : LuvegiSpacing.lg),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1100),
             child: Column(
@@ -342,10 +334,7 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
                 _buildCompactHeader(),
                 const SizedBox(height: LuvegiSpacing.lg),
 
-                if (mobile)
-                  _buildMobileCompact()
-                else
-                  _buildDesktopCompact(),
+                if (mobile) _buildMobileCompact() else _buildDesktopCompact(),
               ],
             ),
           ),
@@ -444,9 +433,7 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
           initiallyExpanded: _lineas.isEmpty,
           icon: Icons.upload_file_rounded,
           title: '2. Archivo Excel',
-          trailingText: _lineas.isEmpty
-              ? null
-              : '${_lineas.length} líneas',
+          trailingText: _lineas.isEmpty ? null : '${_lineas.length} líneas',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -510,9 +497,7 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
             children: [
               Text(
                 'Importador de Solicitudes de Compra',
-                style: LuvegiText.title.copyWith(
-                  fontSize: 20,
-                ),
+                style: LuvegiText.title.copyWith(fontSize: 20),
               ),
               const SizedBox(height: LuvegiSpacing.xs),
               Text(
@@ -546,8 +531,7 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
   }
 
   Widget _buildFileSummaryCompact() {
-    final bool hasFile =
-        _archivoNombre != 'Ningún archivo seleccionado';
+    final bool hasFile = _archivoNombre != 'Ningún archivo seleccionado';
 
     return Container(
       width: double.infinity,
@@ -557,7 +541,7 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
         borderRadius: BorderRadius.circular(LuvegiRadius.sm),
         border: Border.all(
           color: hasFile
-              ? LuvegiColors.secondary.withOpacity(0.35)
+              ? LuvegiColors.secondary.withValues(alpha: 0.35)
               : LuvegiColors.border,
         ),
       ),
@@ -567,9 +551,7 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
             hasFile
                 ? Icons.insert_drive_file_rounded
                 : Icons.folder_open_rounded,
-            color: hasFile
-                ? LuvegiColors.secondary
-                : LuvegiColors.textHint,
+            color: hasFile ? LuvegiColors.secondary : LuvegiColors.textHint,
           ),
           const SizedBox(width: LuvegiSpacing.sm),
           Expanded(
@@ -580,9 +562,7 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
                   _archivoNombre,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: LuvegiText.body.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: LuvegiText.body.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -616,169 +596,9 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
                 : _prCtrl.text.trim(),
           ),
           const SizedBox(height: LuvegiSpacing.sm),
-          _SummaryRow(
-            label: 'Archivo',
-            value: _archivoNombre,
-          ),
+          _SummaryRow(label: 'Archivo', value: _archivoNombre),
           const SizedBox(height: LuvegiSpacing.sm),
-          _SummaryRow(
-            label: 'Líneas',
-            value: '${_lineas.length}',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            color: LuvegiColors.menuHover,
-            borderRadius: BorderRadius.circular(
-              LuvegiRadius.md,
-            ),
-          ),
-          child: const Icon(
-            Icons.assignment_add,
-            color: LuvegiColors.secondary,
-            size: 28,
-          ),
-        ),
-        const SizedBox(width: LuvegiSpacing.md),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Importador de Solicitudes de Compra',
-                style: LuvegiText.heading,
-              ),
-              const SizedBox(height: LuvegiSpacing.xs),
-              Text(
-                'Carga líneas desde Excel y regístralas en Odoo de forma segura.',
-                style: LuvegiText.bodySecondary,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRequiredColumns() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(LuvegiSpacing.md),
-      decoration: BoxDecoration(
-        color: LuvegiColors.menuHover,
-        borderRadius: BorderRadius.circular(
-          LuvegiRadius.sm,
-        ),
-        border: Border.all(
-          color: LuvegiColors.border,
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(
-            Icons.table_chart_outlined,
-            color: LuvegiColors.secondary,
-            size: 22,
-          ),
-          const SizedBox(width: LuvegiSpacing.sm),
-          Expanded(
-            child: Text(
-              'Columnas requeridas: Código de Producto, Cantidad, Unidad de Negocio, Equipo y Pedido.',
-              style: LuvegiText.body.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildExampleCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(LuvegiSpacing.md),
-      decoration: BoxDecoration(
-        color: LuvegiColors.surfaceHover,
-        borderRadius: BorderRadius.circular(
-          LuvegiRadius.sm,
-        ),
-        border: Border.all(
-          color: LuvegiColors.border,
-        ),
-      ),
-      child: Text(
-        'Ejemplo:\n'
-        '1601050543 | 6 | PROYE | .SINEQUI | PY250176',
-        style: LuvegiText.caption.copyWith(
-          fontFamily: 'monospace',
-          color: LuvegiColors.textSecondary,
-          height: 1.5,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFileSummary() {
-    final bool hasFile =
-        _archivoNombre != 'Ningún archivo seleccionado';
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(LuvegiSpacing.md),
-      decoration: BoxDecoration(
-        color: LuvegiColors.surface,
-        borderRadius: BorderRadius.circular(
-          LuvegiRadius.sm,
-        ),
-        border: Border.all(
-          color: hasFile
-              ? LuvegiColors.secondary.withOpacity(0.35)
-              : LuvegiColors.border,
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            hasFile
-                ? Icons.insert_drive_file_rounded
-                : Icons.folder_open_rounded,
-            color: hasFile
-                ? LuvegiColors.secondary
-                : LuvegiColors.textHint,
-          ),
-          const SizedBox(width: LuvegiSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _archivoNombre,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: LuvegiText.body.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: LuvegiSpacing.xs),
-                Text(
-                  'Líneas detectadas: ${_lineas.length}',
-                  style: LuvegiText.caption,
-                ),
-              ],
-            ),
-          ),
+          _SummaryRow(label: 'Líneas', value: '${_lineas.length}'),
         ],
       ),
     );
@@ -789,22 +609,14 @@ class _ImportarPrPageState extends State<ImportarPrPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(LuvegiSpacing.md),
       decoration: BoxDecoration(
-        color: _estadoColor.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(
-          LuvegiRadius.sm,
-        ),
-        border: Border.all(
-          color: _estadoColor.withOpacity(0.28),
-        ),
+        color: _estadoColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(LuvegiRadius.sm),
+        border: Border.all(color: _estadoColor.withValues(alpha: 0.28)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            _estadoIcon,
-            color: _estadoColor,
-            size: 22,
-          ),
+          Icon(_estadoIcon, color: _estadoColor, size: 22),
           const SizedBox(width: LuvegiSpacing.sm),
           Expanded(
             child: Text(
@@ -848,19 +660,13 @@ class _CompactSection extends StatelessWidget {
                   color: LuvegiColors.menuHover,
                   borderRadius: BorderRadius.circular(LuvegiRadius.sm),
                 ),
-                child: Icon(
-                  icon,
-                  color: LuvegiColors.secondary,
-                  size: 19,
-                ),
+                child: Icon(icon, color: LuvegiColors.secondary, size: 19),
               ),
               const SizedBox(width: LuvegiSpacing.sm),
               Expanded(
                 child: Text(
                   title,
-                  style: LuvegiText.title.copyWith(
-                    fontSize: 16,
-                  ),
+                  style: LuvegiText.title.copyWith(fontSize: 16),
                 ),
               ),
             ],
@@ -893,9 +699,7 @@ class _CompactExpansionSection extends StatelessWidget {
     return LuvegiCard(
       padding: EdgeInsets.zero,
       child: Theme(
-        data: Theme.of(context).copyWith(
-          dividerColor: Colors.transparent,
-        ),
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           initiallyExpanded: initiallyExpanded,
           tilePadding: const EdgeInsets.symmetric(
@@ -908,22 +712,11 @@ class _CompactExpansionSection extends StatelessWidget {
             LuvegiSpacing.md,
             LuvegiSpacing.md,
           ),
-          leading: Icon(
-            icon,
-            color: LuvegiColors.secondary,
-          ),
-          title: Text(
-            title,
-            style: LuvegiText.title.copyWith(
-              fontSize: 15,
-            ),
-          ),
+          leading: Icon(icon, color: LuvegiColors.secondary),
+          title: Text(title, style: LuvegiText.title.copyWith(fontSize: 15)),
           subtitle: trailingText == null
               ? null
-              : Text(
-                  trailingText!,
-                  style: LuvegiText.caption,
-                ),
+              : Text(trailingText!, style: LuvegiText.caption),
           children: [child],
         ),
       ),
@@ -935,10 +728,7 @@ class _SummaryRow extends StatelessWidget {
   final String label;
   final String value;
 
-  const _SummaryRow({
-    required this.label,
-    required this.value,
-  });
+  const _SummaryRow({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -948,9 +738,7 @@ class _SummaryRow extends StatelessWidget {
           width: 72,
           child: Text(
             label,
-            style: LuvegiText.caption.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+            style: LuvegiText.caption.copyWith(fontWeight: FontWeight.w700),
           ),
         ),
         const SizedBox(width: LuvegiSpacing.sm),
@@ -959,85 +747,10 @@ class _SummaryRow extends StatelessWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: LuvegiText.body.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+            style: LuvegiText.body.copyWith(fontWeight: FontWeight.w600),
           ),
         ),
       ],
-    );
-  }
-}
-
-class _StepSection extends StatelessWidget {
-  final int number;
-  final String title;
-  final String subtitle;
-  final Widget child;
-
-  const _StepSection({
-    required this.number,
-    required this.title,
-    required this.subtitle,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(LuvegiSpacing.lg),
-      decoration: BoxDecoration(
-        color: LuvegiColors.surface,
-        borderRadius: BorderRadius.circular(
-          LuvegiRadius.lg,
-        ),
-        border: Border.all(
-          color: LuvegiColors.border,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: LuvegiColors.primary,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  '$number',
-                  style: LuvegiText.button,
-                ),
-              ),
-              const SizedBox(width: LuvegiSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: LuvegiText.title,
-                    ),
-                    const SizedBox(height: LuvegiSpacing.xs),
-                    Text(
-                      subtitle,
-                      style: LuvegiText.bodySecondary,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: LuvegiSpacing.lg),
-          child,
-        ],
-      ),
     );
   }
 }

@@ -1,8 +1,10 @@
 import 'package:dio/dio.dart';
+import '../utils/mensaje_error.dart';
 
 class BoletasService {
   final Dio _dio = Dio();
-  final String _baseUrl = 'https://portal.luvegi.com/api_luvegi/boletas_usuario.php';
+  final String _baseUrl =
+      'https://portal.luvegi.com/api_luvegi/boletas_usuario.php';
 
   Future<List<Map<String, dynamic>>> listar(String token) async {
     try {
@@ -16,7 +18,7 @@ class BoletasService {
       }
       return [];
     } catch (e) {
-      throw Exception('Error al conectar con el servidor: $e');
+      throw Exception(MensajeError.desdeExcepcion(e));
     }
   }
 }

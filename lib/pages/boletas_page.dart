@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/boletas_service.dart'; // Importante: apunta al service de arriba
+import '../utils/mensaje_error.dart';
 
 class BoletasPage extends StatefulWidget {
   final String token;
@@ -33,7 +34,7 @@ class _BoletasPageState extends State<BoletasPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(MensajeError.desdeExcepcion(e)), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -50,8 +51,9 @@ class _BoletasPageState extends State<BoletasPage> {
       }
     }
 
-    final url = 'https://portal.luvegi.com/api_luvegi/descargar_boleta.php?anio=$anio&mes=$mes&token=${widget.token}';
-    
+    final url =
+        'https://portal.luvegi.com/api_luvegi/descargar_boleta.php?anio=$anio&mes=$mes&token=${widget.token}';
+
     try {
       // Intentar usar carpeta pública de descargas en Android
       Directory? directory;
@@ -89,46 +91,60 @@ class _BoletasPageState extends State<BoletasPage> {
       if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ Error: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text(MensajeError.desdeExcepcion(e)), backgroundColor: Colors.red),
       );
     }
   }
 
   String _nombreMes(int mes) {
-    const meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const meses = [
+      '',
+      'Enero',
+      'Febrero',
+      'Marzo',
+      'Abril',
+      'Mayo',
+      'Junio',
+      'Julio',
+      'Agosto',
+      'Septiembre',
+      'Octubre',
+      'Noviembre',
+      'Diciembre',
+    ];
     return (mes >= 1 && mes <= 12) ? meses[mes] : 'Mes';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('📄 Mis Boletas'),
-        elevation: 0,
-      ),
+      appBar: AppBar(title: const Text('📄 Mis Boletas'), elevation: 0),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _boletas.isEmpty
-              ? const Center(child: Text('No tienes boletas registradas.'))
-              : RefreshIndicator(
-                  onRefresh: _cargar,
-                  child: ListView.builder(
-                    itemCount: _boletas.length,
-                    padding: const EdgeInsets.all(10),
-                    itemBuilder: (context, index) {
-                      final b = _boletas[index];
-                      return Card(
-                        child: ListTile(
-                          leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
-                          title: Text('${_nombreMes(b['mes'])} ${b['anio']}'),
-                          subtitle: const Text('Toca para bajar a tu celular'),
-                          trailing: const Icon(Icons.file_download),
-                          onTap: () => _descargarSilencioso(b['anio'], b['mes']),
-                        ),
-                      );
-                    },
-                  ),
-                ),
+          ? const Center(child: Text('No tienes boletas registradas.'))
+          : RefreshIndicator(
+              onRefresh: _cargar,
+              child: ListView.builder(
+                itemCount: _boletas.length,
+                padding: const EdgeInsets.all(10),
+                itemBuilder: (context, index) {
+                  final b = _boletas[index];
+                  return Card(
+                    child: ListTile(
+                      leading: const Icon(
+                        Icons.picture_as_pdf,
+                        color: Colors.red,
+                      ),
+                      title: Text('${_nombreMes(b['mes'])} ${b['anio']}'),
+                      subtitle: const Text('Toca para bajar a tu celular'),
+                      trailing: const Icon(Icons.file_download),
+                      onTap: () => _descargarSilencioso(b['anio'], b['mes']),
+                    ),
+                  );
+                },
+              ),
+            ),
     );
   }
 }

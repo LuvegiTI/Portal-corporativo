@@ -41,8 +41,19 @@ class _MisBoletasPageState extends State<MisBoletasPage>
   );
 
   final List<String> mesesNombres = [
-    'Todos los meses', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+    'Todos los meses',
+    'Enero',
+    'Febrero',
+    'Marzo',
+    'Abril',
+    'Mayo',
+    'Junio',
+    'Julio',
+    'Agosto',
+    'Septiembre',
+    'Octubre',
+    'Noviembre',
+    'Diciembre',
   ];
 
   @override
@@ -69,7 +80,11 @@ class _MisBoletasPageState extends State<MisBoletasPage>
   // --- LÓGICA DE DATOS ---
 
   String _formatearFecha(String? fecha) {
-    if (fecha == null || fecha.isEmpty || fecha == "null" || fecha == "0000-00-00 00:00:00") return "---";
+    if (fecha == null ||
+        fecha.isEmpty ||
+        fecha == "null" ||
+        fecha == "0000-00-00 00:00:00")
+      return "---";
     try {
       DateTime dt = DateTime.parse(fecha);
       String dia = dt.day.toString().padLeft(2, '0');
@@ -98,12 +113,14 @@ class _MisBoletasPageState extends State<MisBoletasPage>
         }
 
         Set<String> uniqueYears = data.map((b) => b['anio'].toString()).toSet();
-        List<String> sortedYears = uniqueYears.toList()..sort((a, b) => b.compareTo(a));
+        List<String> sortedYears = uniqueYears.toList()
+          ..sort((a, b) => b.compareTo(a));
 
         setState(() {
           allBoletas = data;
           years = sortedYears;
-          if (selectedYear == null && years.isNotEmpty) selectedYear = years.first;
+          if (selectedYear == null && years.isNotEmpty)
+            selectedYear = years.first;
           _applyFilters();
           loading = false;
         });
@@ -121,12 +138,16 @@ class _MisBoletasPageState extends State<MisBoletasPage>
     setState(() {
       filteredBoletas = allBoletas.where((b) {
         final matchesYear = b['anio'].toString() == selectedYear;
-        final matchesMonth = selectedMonth == 0 ||
+        final matchesMonth =
+            selectedMonth == 0 ||
             int.parse(b['mes'].toString()) == selectedMonth;
         return matchesYear && matchesMonth;
       }).toList();
-      filteredBoletas.sort((a, b) => int.parse(b['mes'].toString())
-          .compareTo(int.parse(a['mes'].toString())));
+      filteredBoletas.sort(
+        (a, b) => int.parse(
+          b['mes'].toString(),
+        ).compareTo(int.parse(a['mes'].toString())),
+      );
     });
   }
 
@@ -169,7 +190,8 @@ class _MisBoletasPageState extends State<MisBoletasPage>
     final anio = boleta['anio'].toString();
     final key = '$anio-$mesNum';
 
-    final bool yaConfirmada = estadosBoletas.containsKey(key) &&
+    final bool yaConfirmada =
+        estadosBoletas.containsKey(key) &&
         estadosBoletas[key]['primera'] != null &&
         estadosBoletas[key]['primera'] != "null";
 
@@ -182,7 +204,8 @@ class _MisBoletasPageState extends State<MisBoletasPage>
   }
 
   Future<void> _ejecutarDescarga(Map boleta, int mes, String anio) async {
-    final url = "https://portal.luvegi.com/api_luvegi/obtener_mis_boletas.php?anio=$anio&mes=${boleta['mes']}&token=${widget.token}";
+    final url =
+        "https://portal.luvegi.com/api_luvegi/obtener_mis_boletas.php?anio=$anio&mes=${boleta['mes']}&token=${widget.token}";
 
     if (kIsWeb) {
       if (await canLaunchUrl(Uri.parse(url))) {
@@ -227,14 +250,20 @@ class _MisBoletasPageState extends State<MisBoletasPage>
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
-        title: const Text("Mis Boletas", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          "Mis Boletas",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.white,
         foregroundColor: _navy,
         elevation: 0,
         centerTitle: true,
         actions: [
           IconButton(
-            onPressed: () { _fetch(); _fetchEstados(); },
+            onPressed: () {
+              _fetch();
+              _fetchEstados();
+            },
             icon: const Icon(Icons.sync_rounded),
             tooltip: 'Sincronizar',
           ),
@@ -248,19 +277,20 @@ class _MisBoletasPageState extends State<MisBoletasPage>
             child: loading
                 ? const Center(child: CircularProgressIndicator(color: _navy))
                 : filteredBoletas.isEmpty
-                    ? _buildEmptyState()
-                    : RefreshIndicator(
-                        color: _navy,
-                        onRefresh: () async {
-                          await _fetch();
-                          await _fetchEstados();
-                        },
-                        child: ListView.builder(
-                          itemCount: filteredBoletas.length,
-                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-                          itemBuilder: (c, i) => _buildCardBoleta(filteredBoletas[i], i),
-                        ),
-                      ),
+                ? _buildEmptyState()
+                : RefreshIndicator(
+                    color: _navy,
+                    onRefresh: () async {
+                      await _fetch();
+                      await _fetchEstados();
+                    },
+                    child: ListView.builder(
+                      itemCount: filteredBoletas.length,
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                      itemBuilder: (c, i) =>
+                          _buildCardBoleta(filteredBoletas[i], i),
+                    ),
+                  ),
           ),
         ],
       ),
@@ -269,10 +299,10 @@ class _MisBoletasPageState extends State<MisBoletasPage>
 
   Widget _buildCardBoleta(Map b, int index) {
     final mes = int.tryParse(b['mes'].toString()) ?? 0;
-    
+
     // 1. SUBIDO: Campo inmutable de la primera carga
-    String rawSubida = b['fecha_subida']?.toString() ?? ""; 
-    
+    String rawSubida = b['fecha_subida']?.toString() ?? "";
+
     // 2. ACTUALIZADO: Campo que cambia con el UPDATE
     String rawActualizacion = b['creado_en']?.toString() ?? "";
 
@@ -280,15 +310,19 @@ class _MisBoletasPageState extends State<MisBoletasPage>
     final String fActualizacion = _formatearFecha(rawActualizacion);
 
     // Lógica para detectar si hubo una actualización real
-    bool fueActualizada = rawActualizacion.isNotEmpty && 
-                         rawActualizacion != "null" && 
-                         rawActualizacion != rawSubida;
+    bool fueActualizada =
+        rawActualizacion.isNotEmpty &&
+        rawActualizacion != "null" &&
+        rawActualizacion != rawSubida;
 
     return AnimatedBuilder(
       animation: _animController,
       builder: (ctx, child) {
         final delay = (index * 0.08).clamp(0.0, 0.85);
-        final t = ((_animController.value - delay) / (1 - delay)).clamp(0.0, 1.0);
+        final t = ((_animController.value - delay) / (1 - delay)).clamp(
+          0.0,
+          1.0,
+        );
         return Transform.translate(
           offset: Offset(0, 24 * (1 - Curves.easeOutCubic.transform(t))),
           child: Opacity(opacity: t.clamp(0.0, 1.0), child: child),
@@ -299,7 +333,13 @@ class _MisBoletasPageState extends State<MisBoletasPage>
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(18),
-          boxShadow: [BoxShadow(color: _navy.withOpacity(0.06), blurRadius: 16, offset: const Offset(0, 4))],
+          boxShadow: [
+            BoxShadow(
+              color: _navy.withValues(alpha: 0.06),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Material(
           color: Colors.transparent,
@@ -317,18 +357,35 @@ class _MisBoletasPageState extends State<MisBoletasPage>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(children: [
-                          Text(mesesNombres[mes], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: _textDark)),
-                          const SizedBox(width: 8),
-                          _buildYearBadge(b['anio'].toString()),
-                        ]),
+                        Row(
+                          children: [
+                            Text(
+                              mesesNombres[mes],
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: _textDark,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            _buildYearBadge(b['anio'].toString()),
+                          ],
+                        ),
                         const SizedBox(height: 6),
-                        
-                        _buildDateRow(Icons.cloud_upload_outlined, "Subido:", fSubida),
+
+                        _buildDateRow(
+                          Icons.cloud_upload_outlined,
+                          "Subido:",
+                          fSubida,
+                        ),
 
                         if (fueActualizada) ...[
                           const SizedBox(height: 2),
-                          _buildDateRow(Icons.edit_calendar_outlined, "Actualizado:", fActualizacion),
+                          _buildDateRow(
+                            Icons.edit_calendar_outlined,
+                            "Actualizado:",
+                            fActualizacion,
+                          ),
                         ],
 
                         const SizedBox(height: 10),
@@ -350,8 +407,17 @@ class _MisBoletasPageState extends State<MisBoletasPage>
     final key = '${b['anio']}-${b['mes']}';
     final datos = estadosBoletas[key];
 
-    if (datos == null || datos['primera'] == null || datos['primera'] == "null" || datos['primera'] == "") {
-      return _chipContainer(Colors.grey.shade100, Colors.grey.shade300, Icons.schedule_rounded, "Pendiente de descarga", Colors.grey.shade600);
+    if (datos == null ||
+        datos['primera'] == null ||
+        datos['primera'] == "null" ||
+        datos['primera'] == "") {
+      return _chipContainer(
+        Colors.grey.shade100,
+        Colors.grey.shade300,
+        Icons.schedule_rounded,
+        "Pendiente de descarga",
+        Colors.grey.shade600,
+      );
     }
 
     final String rawPrimera = datos['primera'].toString();
@@ -363,11 +429,25 @@ class _MisBoletasPageState extends State<MisBoletasPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _chipContainer(const Color(0xFFECFDF5), const Color(0xFF6EE7B7), Icons.verified_rounded, "Recibida: $fPrimera", const Color(0xFF065F46)),
+        _chipContainer(
+          const Color(0xFFECFDF5),
+          const Color(0xFF6EE7B7),
+          Icons.verified_rounded,
+          "Recibida: $fPrimera",
+          const Color(0xFF065F46),
+        ),
 
-        if (rawUltima.isNotEmpty && rawUltima != "null" && rawUltima != rawPrimera) ...[
+        if (rawUltima.isNotEmpty &&
+            rawUltima != "null" &&
+            rawUltima != rawPrimera) ...[
           const SizedBox(height: 4),
-          _chipContainer(const Color(0xFFEFF6FF), const Color(0xFF93C5FD), Icons.history_rounded, "Última desc: $fUltima", const Color(0xFF1E40AF)),
+          _chipContainer(
+            const Color(0xFFEFF6FF),
+            const Color(0xFF93C5FD),
+            Icons.history_rounded,
+            "Última desc: $fUltima",
+            const Color(0xFF1E40AF),
+          ),
         ],
       ],
     );
@@ -378,83 +458,232 @@ class _MisBoletasPageState extends State<MisBoletasPage>
   Widget _buildHeaderFilters() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30)), boxShadow: [BoxShadow(color: _navy.withOpacity(0.08), blurRadius: 20, offset: const Offset(0, 6))]),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(30),
+          bottomRight: Radius.circular(30),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: _navy.withValues(alpha: 0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
       child: Row(
         children: [
-          Expanded(child: _buildDropdownField<String?>("Año", Icons.calendar_today_rounded, selectedYear, years.map((y) => DropdownMenuItem(value: y, child: Text("Año $y", style: _dropdownItemStyle))).toList(), (val) { setState(() => selectedYear = val); _applyFilters(); })),
+          Expanded(
+            child: _buildDropdownField<String?>(
+              "Año",
+              Icons.calendar_today_rounded,
+              selectedYear,
+              years
+                  .map(
+                    (y) => DropdownMenuItem(
+                      value: y,
+                      child: Text("Año $y", style: _dropdownItemStyle),
+                    ),
+                  )
+                  .toList(),
+              (val) {
+                setState(() => selectedYear = val);
+                _applyFilters();
+              },
+            ),
+          ),
           const SizedBox(width: 15),
-          Expanded(child: _buildDropdownField<int>("Mes", Icons.date_range_rounded, selectedMonth, List.generate(mesesNombres.length, (i) => DropdownMenuItem(value: i, child: Text(mesesNombres[i], style: _dropdownItemStyle))), (val) { if (val != null) setState(() => selectedMonth = val); _applyFilters(); })),
+          Expanded(
+            child: _buildDropdownField<int>(
+              "Mes",
+              Icons.date_range_rounded,
+              selectedMonth,
+              List.generate(
+                mesesNombres.length,
+                (i) => DropdownMenuItem(
+                  value: i,
+                  child: Text(mesesNombres[i], style: _dropdownItemStyle),
+                ),
+              ),
+              (val) {
+                if (val != null) setState(() => selectedMonth = val);
+                _applyFilters();
+              },
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildDropdownField<T>(String label, IconData icon, T value, List<DropdownMenuItem<T>> items, ValueChanged<T?> onChanged) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [Icon(icon, size: 12, color: _navy), const SizedBox(width: 5), Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _navy))]),
-      const SizedBox(height: 6),
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12), border: Border.all(color: _navy.withOpacity(0.12))),
-        child: DropdownButtonHideUnderline(
-          child: DropdownButton<T>(
-            value: value,
-            isExpanded: true,
-            items: items,
-            onChanged: onChanged,
-           dropdownColor: Colors.white,
-           borderRadius: BorderRadius.circular(12),
-           icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: _navy),
-            selectedItemBuilder: (BuildContext context) {
-              return items.map<Widget>((DropdownMenuItem<T> item) {
-                return Align(
-                  alignment: Alignment.centerLeft, 
-                  child: Text(
-                    (item.child as Text).data!, 
-                    style: const TextStyle(color: _navy, fontWeight: FontWeight.bold, fontSize: 13)
-                  )
-                );
-              }).toList();
-           },
+  Widget _buildDropdownField<T>(
+    String label,
+    IconData icon,
+    T value,
+    List<DropdownMenuItem<T>> items,
+    ValueChanged<T?> onChanged,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 12, color: _navy),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: _navy,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _navy.withValues(alpha: 0.12)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<T>(
+              value: value,
+              isExpanded: true,
+              items: items,
+              onChanged: onChanged,
+              dropdownColor: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              icon: const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 20,
+                color: _navy,
+              ),
+              selectedItemBuilder: (BuildContext context) {
+                return items.map<Widget>((DropdownMenuItem<T> item) {
+                  return Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      (item.child as Text).data!,
+                      style: const TextStyle(
+                        color: _navy,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  );
+                }).toList();
+              },
+            ),
           ),
         ),
-      ),
-    ]);
+      ],
+    );
   }
 
   Widget _buildDateRow(IconData icon, String label, String value) {
-    return Row(children: [
-      Icon(icon, size: 12, color: Colors.blueGrey.withOpacity(0.6)),
-      const SizedBox(width: 4),
-      Text("$label $value", style: const TextStyle(fontSize: 10, color: Colors.blueGrey, fontWeight: FontWeight.w500)),
-    ]);
+    return Row(
+      children: [
+        Icon(icon, size: 12, color: Colors.blueGrey.withValues(alpha: 0.6)),
+        const SizedBox(width: 4),
+        Text(
+          "$label $value",
+          style: const TextStyle(
+            fontSize: 10,
+            color: Colors.blueGrey,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
   }
 
-  Widget _chipContainer(Color bg, Color border, IconData icon, String text, Color txtCol) {
+  Widget _chipContainer(
+    Color bg,
+    Color border,
+    IconData icon,
+    String text,
+    Color txtCol,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6), border: Border.all(color: border)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: border),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 11, color: txtCol),
           const SizedBox(width: 4),
-          Text(text, style: TextStyle(fontSize: 10, color: txtCol, fontWeight: FontWeight.bold)),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 10,
+              color: txtCol,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildPdfIcon() {
-    return Container(width: 54, height: 54, decoration: BoxDecoration(color: const Color(0xFFFFEBEB), borderRadius: BorderRadius.circular(14)), child: const Icon(Icons.picture_as_pdf_rounded, color: Colors.red, size: 28));
+    return Container(
+      width: 54,
+      height: 54,
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFEBEB),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: const Icon(
+        Icons.picture_as_pdf_rounded,
+        color: Colors.red,
+        size: 28,
+      ),
+    );
   }
 
   Widget _buildYearBadge(String anio) {
-    return Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: _navy.withOpacity(0.08), borderRadius: BorderRadius.circular(6)), child: Text(anio, style: const TextStyle(color: _navy, fontSize: 11, fontWeight: FontWeight.bold)));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: _navy.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        anio,
+        style: const TextStyle(
+          color: _navy,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
   }
 
   Widget _buildDownloadActionIcon() {
-    return Container(width: 40, height: 40, decoration: BoxDecoration(color: _navy, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: _navy.withOpacity(0.35), blurRadius: 8, offset: const Offset(0, 3))]), child: const Icon(Icons.download_rounded, color: Colors.white, size: 20));
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: _navy,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: _navy.withValues(alpha: 0.35),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: const Icon(Icons.download_rounded, color: Colors.white, size: 20),
+    );
   }
 
   Widget _buildCounterInfo() {
@@ -462,22 +691,84 @@ class _MisBoletasPageState extends State<MisBoletasPage>
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-        decoration: BoxDecoration(color: _navy.withOpacity(0.08), borderRadius: BorderRadius.circular(20), border: Border.all(color: _navy.withOpacity(0.15))),
-        child: Text('${filteredBoletas.length} ${filteredBoletas.length == 1 ? 'boleta' : 'boletas'}', style: const TextStyle(color: _navy, fontWeight: FontWeight.bold, fontSize: 12)),
+        decoration: BoxDecoration(
+          color: _navy.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _navy.withValues(alpha: 0.15)),
+        ),
+        child: Text(
+          '${filteredBoletas.length} ${filteredBoletas.length == 1 ? 'boleta' : 'boletas'}',
+          style: const TextStyle(
+            color: _navy,
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildEmptyState() {
-    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.folder_off_rounded, size: 60, color: Colors.grey.shade300), const SizedBox(height: 10), const Text("No hay boletas disponibles", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))]));
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.folder_off_rounded, size: 60, color: Colors.grey.shade300),
+          const SizedBox(height: 10),
+          const Text(
+            "No hay boletas disponibles",
+            style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
   }
 
   void _snack(String msg, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: isError ? Colors.red : _navy, behavior: SnackBarBehavior.floating, margin: const EdgeInsets.all(16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: isError ? Colors.red : _navy,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
   }
 
   void _showLoadingDialog(int mes, String anio) {
-    showDialog(context: context, barrierDismissible: false, builder: (_) => Theme(data: ThemeData.light(), child: Dialog(backgroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), child: Padding(padding: const EdgeInsets.all(28), child: Column(mainAxisSize: MainAxisSize.min, children: [const CircularProgressIndicator(color: _navy), const SizedBox(height: 16), const Text('Descargando boleta...', style: TextStyle(fontWeight: FontWeight.w600, color: _navy)), const SizedBox(height: 4), Text('${mesesNombres[mes]} $anio', style: const TextStyle(color: Colors.blueGrey, fontSize: 12))])))));
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Theme(
+        data: ThemeData.light(),
+        child: Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(color: _navy),
+                const SizedBox(height: 16),
+                const Text(
+                  'Descargando boleta...',
+                  style: TextStyle(fontWeight: FontWeight.w600, color: _navy),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${mesesNombres[mes]} $anio',
+                  style: const TextStyle(color: Colors.blueGrey, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<bool?> _mostrarDialogoConfirmacion(int mes, String anio) {
@@ -493,50 +784,116 @@ class _MisBoletasPageState extends State<MisBoletasPage>
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 64, height: 64,
-                decoration: BoxDecoration(color: const Color(0xFFE8F0FB), borderRadius: BorderRadius.circular(18)),
-                child: const Icon(Icons.verified_user_rounded, color: _navy, size: 32),
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F0FB),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  Icons.verified_user_rounded,
+                  color: _navy,
+                  size: 32,
+                ),
               ),
               const SizedBox(height: 16),
-              const Text('Confirmación de recepción', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: _textDark)),
+              const Text(
+                'Confirmación de recepción',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: _textDark,
+                ),
+              ),
               const SizedBox(height: 10),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(color: const Color(0xFFE8F0FB), borderRadius: BorderRadius.circular(10)),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.picture_as_pdf_rounded, color: Colors.red, size: 18),
-                  const SizedBox(width: 8),
-                  Text('Boleta ${mesesNombres[mes]} $anio', style: const TextStyle(fontWeight: FontWeight.w700, color: _navy, fontSize: 13)),
-                ]),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F0FB),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.picture_as_pdf_rounded,
+                      color: Colors.red,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Boleta ${mesesNombres[mes]} $anio',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: _navy,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 14),
               Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: const Color(0xFFFFFBEB), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFFCD34D))),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFBEB),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFFCD34D)),
+                ),
                 child: const Text(
                   'Al confirmar, declaro haber recibido y tomado conocimiento de mi boleta de pago correspondiente al período indicado.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: Color(0xFF92400E), height: 1.5),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF92400E),
+                    height: 1.5,
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
-              Row(children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 12)),
-                    child: const Text('Cancelar', style: TextStyle(color: Colors.blueGrey)),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: const Text(
+                        'Cancelar',
+                        style: TextStyle(color: Colors.blueGrey),
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    style: ElevatedButton.styleFrom(backgroundColor: _navy, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 12)),
-                    child: const Text('Confirmar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _navy,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: const Text(
+                        'Confirmar',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ]),
+                ],
+              ),
             ],
           ),
         ),

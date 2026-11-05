@@ -5,6 +5,7 @@ class PerfilPage extends StatelessWidget {
   final String rol;
   final String correo;
   final String usuarioId;
+  final String token;
 
   const PerfilPage({
     super.key,
@@ -12,7 +13,16 @@ class PerfilPage extends StatelessWidget {
     required this.rol,
     required this.correo,
     required this.usuarioId,
+    required this.token,
   });
+
+  /// URL de la foto del personal (Odoo hr.employee). El endpoint exige el
+  /// token de sesion, asi que se envia como header.
+  String get _fotoUrl {
+    final id = int.tryParse(usuarioId) ?? 0;
+    if (id <= 0) return '';
+    return 'https://portal.luvegi.com/api_luvegi/foto_empleado.php?usuario_id=$id';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +44,7 @@ class PerfilPage extends StatelessWidget {
         child: Column(
           children: [
             const SizedBox(height: 30),
-            
+
             // --- SECCIÓN FOTO DE PERFIL ---
             Center(
               child: Column(
@@ -49,10 +59,31 @@ class PerfilPage extends StatelessWidget {
                         end: Alignment.bottomRight,
                       ),
                     ),
-                    child: const CircleAvatar(
+                    child: CircleAvatar(
                       radius: 60,
                       backgroundColor: Colors.white,
-                      child: Icon(Icons.person_rounded, size: 80, color: Color(0xFF003366)),
+                      child: _fotoUrl.isEmpty
+                          ? const Icon(
+                              Icons.person_rounded,
+                              size: 80,
+                              color: Color(0xFF003366),
+                            )
+                          : ClipOval(
+                              child: Image.network(
+                                _fotoUrl,
+                                width: 120,
+                                height: 120,
+                                fit: BoxFit.cover,
+                                headers: {
+                                  'Authorization': 'Bearer $token',
+                                },
+                                errorBuilder: (_, _, _) => const Icon(
+                                  Icons.person_rounded,
+                                  size: 80,
+                                  color: Color(0xFF003366),
+                                ),
+                              ),
+                            ),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -67,16 +98,19 @@ class PerfilPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF003366),
                       borderRadius: BorderRadius.circular(30),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF003366).withOpacity(0.3),
+                          color: const Color(0xFF003366).withValues(alpha: 0.3),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
-                        )
+                        ),
                       ],
                     ),
                     child: Text(
@@ -104,7 +138,7 @@ class PerfilPage extends StatelessWidget {
                   borderRadius: BorderRadius.circular(25),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
+                      color: Colors.black.withValues(alpha: 0.04),
                       blurRadius: 20,
                       offset: const Offset(0, 10),
                     ),
@@ -112,7 +146,11 @@ class PerfilPage extends StatelessWidget {
                 ),
                 child: Column(
                   children: [
-                    _buildDataRow(Icons.alternate_email_rounded, "Cuenta / Correo", correo),
+                    _buildDataRow(
+                      Icons.alternate_email_rounded,
+                      "Cuenta / Correo",
+                      correo,
+                    ),
                     _customDivider(),
                   ],
                 ),
@@ -132,7 +170,7 @@ class PerfilPage extends StatelessWidget {
                     borderRadius: BorderRadius.circular(15),
                   ),
                   foregroundColor: Colors.redAccent.shade700,
-                  backgroundColor: Colors.redAccent.withOpacity(0.05),
+                  backgroundColor: Colors.redAccent.withValues(alpha: 0.05),
                 ),
                 child: const Text(
                   "Regresar al Inicio",
@@ -151,16 +189,23 @@ class PerfilPage extends StatelessWidget {
     return Divider(
       height: 1,
       thickness: 1,
-      color: Colors.grey.withOpacity(0.06),
+      color: Colors.grey.withValues(alpha: 0.06),
       indent: 70,
       endIndent: 20,
     );
   }
 
-  Widget _buildDataRow(IconData icon, String label, String value, {bool isStatus = false}) {
+  Widget _buildDataRow(
+    IconData icon,
+    String label,
+    String value, {
+    bool isStatus = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
-      child: ListTile(
+      child: Material(
+        type: MaterialType.transparency,
+        child: ListTile(
         leading: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
@@ -186,9 +231,18 @@ class PerfilPage extends StatelessWidget {
             fontSize: 16,
           ),
         ),
-        trailing: isStatus 
-          ? const Icon(Icons.check_circle_rounded, color: Colors.green, size: 22)
-          : const Icon(Icons.arrow_forward_ios_rounded, color: Colors.black12, size: 14),
+        trailing: isStatus
+            ? const Icon(
+                Icons.check_circle_rounded,
+                color: Colors.green,
+                size: 22,
+              )
+            : const Icon(
+                Icons.arrow_forward_ios_rounded,
+                color: Colors.black12,
+                size: 14,
+              ),
+        ),
       ),
     );
   }

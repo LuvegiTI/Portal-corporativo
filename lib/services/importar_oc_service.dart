@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../utils/mensaje_error.dart';
 
 class ImportarOcService {
   static const String _url =
@@ -16,16 +17,13 @@ class ImportarOcService {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       },
-      body: jsonEncode({
-        'oc': ordenCompra.trim(),
-        'lineas': lineas,
-      }),
+      body: jsonEncode({'oc': ordenCompra.trim(), 'lineas': lineas}),
     );
 
     final data = jsonDecode(res.body);
 
     if (res.statusCode != 200 || data['ok'] != true) {
-      throw Exception(data['error'] ?? 'Error al importar OC');
+      throw Exception(MensajeError.desdeCodigo(data['error']?.toString()));
     }
 
     return Map<String, dynamic>.from(data);

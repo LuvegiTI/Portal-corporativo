@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 
+import '../design_system/luvegi_loading.dart';
+
 class ReportePendientesPage extends StatefulWidget {
   final String token;
   const ReportePendientesPage({super.key, required this.token});
@@ -10,7 +12,7 @@ class ReportePendientesPage extends StatefulWidget {
 }
 
 class _ReportePendientesPageState extends State<ReportePendientesPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, LuvegiProgresoMixin {
   static const Color _navy = Color(0xFF003366);
   static const Color _lightBlue = Color(0xFFE2E8F0);
   static const Color _bg = Color(0xFFF8FAFC);
@@ -27,8 +29,19 @@ class _ReportePendientesPageState extends State<ReportePendientesPage>
   List descargadas = [];
 
   final List<String> mesesNombres = [
-    'Todos', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+    'Todos',
+    'Enero',
+    'Febrero',
+    'Marzo',
+    'Abril',
+    'Mayo',
+    'Junio',
+    'Julio',
+    'Agosto',
+    'Septiembre',
+    'Octubre',
+    'Noviembre',
+    'Diciembre',
   ];
 
   @override
@@ -38,8 +51,16 @@ class _ReportePendientesPageState extends State<ReportePendientesPage>
     _fetch();
   }
 
+  @override
+  void dispose() {
+    cancelarProgresoTimer();
+    _tabController.dispose();
+    super.dispose();
+  }
+
   Future<void> _fetch() async {
     setState(() => loading = true);
+    iniciarProgreso();
     try {
       final Map<String, dynamic> params = {};
       if (selectedYear != null) params['anio'] = selectedYear;
@@ -54,16 +75,21 @@ class _ReportePendientesPageState extends State<ReportePendientesPage>
       if (mounted && res.data['ok'] == true) {
         setState(() {
           years = List<int>.from(res.data['anios_disponibles'] ?? []);
-          if (selectedYear == null && years.isNotEmpty) selectedYear = years.first;
-          
+          if (selectedYear == null && years.isNotEmpty)
+            selectedYear = years.first;
+
           // AQUÍ ESTABA EL DETALLE: Ahora el PHP manda listas de empleados
           pendientes = res.data['pendientes'] ?? [];
           descargadas = res.data['descargadas'] ?? [];
           loading = false;
         });
+        detenerProgreso();
       }
     } catch (e) {
-      if (mounted) setState(() => loading = false);
+      if (mounted) {
+        detenerProgreso();
+        setState(() => loading = false);
+      }
     }
   }
 
@@ -72,7 +98,10 @@ class _ReportePendientesPageState extends State<ReportePendientesPage>
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
-        title: const Text("Control de Boletas", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        title: const Text(
+          "Control de Boletas",
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
         backgroundColor: Colors.white,
         foregroundColor: _navy,
         elevation: 0.5,
@@ -93,15 +122,15 @@ class _ReportePendientesPageState extends State<ReportePendientesPage>
         children: [
           _buildFilters(),
           Expanded(
-            child: loading 
-              ? const Center(child: CircularProgressIndicator(color: _navy))
-              : TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _buildAgrupadoList(pendientes, true),
-                    _buildAgrupadoList(descargadas, false),
-                  ],
-                ),
+            child: loading
+                ? buildProgreso()
+                : TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildAgrupadoList(pendientes, true),
+                      _buildAgrupadoList(descargadas, false),
+                    ],
+                  ),
           ),
         ],
       ),
@@ -126,44 +155,70 @@ class _ReportePendientesPageState extends State<ReportePendientesPage>
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: _lightBlue.withOpacity(0.5)),
+            border: Border.all(color: _lightBlue.withValues(alpha: 0.5)),
             boxShadow: [
-              BoxShadow(color: _navy.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4)),
+              BoxShadow(
+                color: _navy.withValues(alpha: 0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
             ],
           ),
-          child: Theme(
+          child: Material(
+            type: MaterialType.transparency,
+            child: Theme(
             data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
             child: ExpansionTile(
               leading: Container(
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.1),
+                  color: statusColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Center(
-                  child: Text(emp['nombre'][0], 
-                    style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 16)),
+                  child: Text(
+                    emp['nombre'][0],
+                    style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
                 ),
               ),
-              title: Text(emp['nombre'], 
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _navy)),
-              subtitle: Text("${emp['total_boletas']} boletas ${isPendiente ? 'pendientes' : 'recibidas'}",
-                style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
+              title: Text(
+                emp['nombre'],
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: _navy,
+                ),
+              ),
+              subtitle: Text(
+                "${emp['total_boletas']} boletas ${isPendiente ? 'pendientes' : 'recibidas'}",
+                style: const TextStyle(fontSize: 12, color: Colors.blueGrey),
+              ),
               children: [
                 const Divider(height: 1, indent: 16, endIndent: 16),
                 ...List.generate(emp['meses'].length, (index) {
                   final m = emp['meses'][index];
                   return ListTile(
                     dense: true,
-                    title: Text("${mesesNombres[m['mes']]} ${m['anio']}", 
-                      style: const TextStyle(fontSize: 13, color: _navy)),
-                    trailing: Icon(isPendiente ? Icons.hourglass_top : Icons.check_circle, 
-                      color: statusColor, size: 16),
+                    title: Text(
+                      "${mesesNombres[m['mes']]} ${m['anio']}",
+                      style: const TextStyle(fontSize: 13, color: _navy),
+                    ),
+                    trailing: Icon(
+                      isPendiente ? Icons.hourglass_top : Icons.check_circle,
+                      color: statusColor,
+                      size: 16,
+                    ),
                   );
                 }),
               ],
             ),
+          ),
           ),
         );
       },
@@ -179,23 +234,56 @@ class _ReportePendientesPageState extends State<ReportePendientesPage>
       ),
       child: Row(
         children: [
-          Expanded(child: _dropdown("Año", selectedYear, years.map((y) => DropdownMenuItem(value: y, child: Text("$y"))).toList(), (v) {
-            setState(() => selectedYear = v); _fetch();
-          })),
+          Expanded(
+            child: _dropdown(
+              "Año",
+              selectedYear,
+              years
+                  .map((y) => DropdownMenuItem(value: y, child: Text("$y")))
+                  .toList(),
+              (v) {
+                setState(() => selectedYear = v);
+                _fetch();
+              },
+            ),
+          ),
           const SizedBox(width: 12),
-          Expanded(child: _dropdown("Mes", selectedMonth, List.generate(mesesNombres.length, (i) => DropdownMenuItem(value: i, child: Text(mesesNombres[i]))), (v) {
-            setState(() => selectedMonth = v!); _fetch();
-          })),
+          Expanded(
+            child: _dropdown(
+              "Mes",
+              selectedMonth,
+              List.generate(
+                mesesNombres.length,
+                (i) => DropdownMenuItem(value: i, child: Text(mesesNombres[i])),
+              ),
+              (v) {
+                setState(() => selectedMonth = v!);
+                _fetch();
+              },
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _dropdown<T>(String label, T value, List<DropdownMenuItem<T>> items, ValueChanged<T?> onChanged) {
+  Widget _dropdown<T>(
+    String label,
+    T value,
+    List<DropdownMenuItem<T>> items,
+    ValueChanged<T?> onChanged,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _navy)),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            color: _navy,
+          ),
+        ),
         const SizedBox(height: 4),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -212,7 +300,11 @@ class _ReportePendientesPageState extends State<ReportePendientesPage>
               items: items,
               onChanged: onChanged,
               icon: const Icon(Icons.keyboard_arrow_down, color: _navy),
-              style: const TextStyle(color: _navy, fontSize: 13, fontWeight: FontWeight.w600),
+              style: const TextStyle(
+                color: _navy,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ),

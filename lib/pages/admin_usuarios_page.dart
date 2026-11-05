@@ -1,42 +1,20 @@
-import 'package:flutter/material.dart';
 import 'dart:async';
-import '../services/admin_usuarios_service.dart';
-import '../services/admin_catalogos_acceso_service.dart';
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
-// =================================================
-// 📦 MODELO DE DATOS
-// =================================================
-class Usuario {
-  final int id;
-  final String email;
-  final String nombre;
-  final String rol;
-  final bool activo;
+import '../theme/luvegi_colors.dart';
+import '../theme/luvegi_radius.dart';
+import '../theme/luvegi_spacing.dart';
+import '../theme/luvegi_text.dart';
+import '../services/auditoria_service.dart';
+import '../utils/mensaje_error.dart';
 
-  Usuario({
-    required this.id,
-    required this.email,
-    required this.nombre,
-    required this.rol,
-    required this.activo,
-  });
-
-  factory Usuario.fromMap(Map<String, dynamic> map) {
-    return Usuario(
-      id: map['id'] ?? 0,
-      email: map['usuario'] ?? '',
-      nombre: map['nombre'] ?? '',
-      rol: map['rol'] ?? 'SIN_AREA',
-      activo: map['activo'] == 1,
-    );
-  }
-}
-
-// ─── Enum de filtro de estado ─────────────────────────────────────────────────
-enum FiltroEstado { todos, activos, bajas }
+const String _baseUrl = 'https://portal.luvegi.com/api_luvegi';
 
 class AdminUsuariosPage extends StatefulWidget {
   final String token;
+
   const AdminUsuariosPage({super.key, required this.token});
 
   @override
@@ -44,898 +22,1437 @@ class AdminUsuariosPage extends StatefulWidget {
 }
 
 class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
-  final _service = AdminUsuariosService();
-  final _catalogosService = AdminCatalogosAccesoService();
-  List<Usuario> _usuarios = [];
-  bool _loading = true;
-  bool _searching = false;
-  final TextEditingController _searchCtrl = TextEditingController();
-  Timer? _debounce;
-  final FocusNode _searchFocus = FocusNode();
+  bool _cargando = true;
+  bool _sincronizandoDni = false;
+  bool _buscandoDni = false;
+  Map<String, dynamic>? _dniEncontrado;
+  Timer? _debounceDni;
+  String _filtroEstado = 'TODOS';
+  String _busqueda = '';
 
-  // ─── NUEVO: filtro de estado activo ──────────────────────────────────────
-  FiltroEstado _filtroEstado = FiltroEstado.todos;
-
-  List<String> _areas = [];
-
-  // 🎨 Paleta
-  final Color primaryDark = const Color(0xFF0F172A);
-  final Color accentBlue = const Color(0xFF2563EB);
-  final Color textSecondary = const Color(0xFF475569);
-  final Color bgColor = const Color(0xFFF1F5F9);
+  List<dynamic> _usuarios = [];
+  List<dynamic> _areasDisponibles = [];
+  List<dynamic> _rolesDisponibles = [];
+  final TextEditingController _busquedaController = TextEditingController();
+  final AuditoriaService _auditoria = AuditoriaService();
 
   @override
   void initState() {
     super.initState();
-    _cargar();
-    _searchCtrl.addListener(() {
-      if (_debounce?.isActive ?? false) _debounce!.cancel();
-      _debounce = Timer(
-          const Duration(milliseconds: 300), () => setState(() {}));
-    });
+    _cargarDatos();
   }
 
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _searchFocus.dispose();
-    _searchCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _cargar() async {
-    setState(() => _loading = true);
+  // --- MÉTODOS DE API ---
+  Future<void> _cargarDatos() async {
+    setState(() => _cargando = true);
     try {
-      final result = await Future.wait([
-        _service.listar(widget.token),
-        _catalogosService.areas(widget.token),
-      ]);
-      final data = result[0] as List<Map<String, dynamic>>;
-      final areas = result[1] as List<Map<String, dynamic>>;
-      setState(() {
-        _usuarios = data.map((m) => Usuario.fromMap(m)).toList();
-        _areas = areas
-            .where((a) => a['activo'] == 1 || a['activo'].toString() == '1')
-            .map((a) => a['codigo'].toString())
-            .toList();
-      });
-    } catch (_) {
-      _snack('Error al conectar con el servidor', error: true);
+      final url = Uri.parse('$_baseUrl/admin_usuarios.php?action=listar');
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final body = json.decode(response.body);
+        if (body['ok'] == true) {
+          final datos = body['data'] ?? {};
+          setState(() {
+            _usuarios = datos['usuarios'] ?? [];
+            _areasDisponibles = datos['areas'] ?? [];
+            _rolesDisponibles = datos['roles'] ?? [];
+          });
+          final conFoto = (datos['con_foto'] as num?)?.toInt() ?? 0;
+          debugPrint(
+            'Usuarios: ${_usuarios.length} | con foto Odoo: $conFoto',
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error cargando usuarios: $e');
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _cargando = false);
     }
   }
 
-  void _snack(String msg, {bool error = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg,
-            style: const TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor:
-            error ? const Color(0xFFDC2626) : primaryDark,
-        behavior: SnackBarBehavior.floating,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(15),
-      ),
+  /// Rellena el DNI de los usuarios desde Odoo (hr.employee). Con el DNI el
+  /// emparejamiento con las fotos deja de depender del nombre.
+  Future<void> _sincronizarDni() async {
+    setState(() => _sincronizandoDni = true);
+    try {
+      final url = Uri.parse(
+        '$_baseUrl/admin_usuarios.php?action=sincronizar_dni',
+      );
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      final body = json.decode(response.body);
+      if (!mounted) return;
+
+      if (response.statusCode == 200 && body['ok'] == true) {
+        final actualizados = (body['actualizados'] as num?)?.toInt() ?? 0;
+        final sinCruce = (body['sin_cruce'] as num?)?.toInt() ?? 0;
+        final conflictos = (body['conflictos'] as List?)?.length ?? 0;
+        await _cargarDatos();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'DNI sincronizados: $actualizados | sin cruce: $sinCruce'
+              '${conflictos > 0 ? ' | conflictos: $conflictos' : ''}',
+            ),
+            backgroundColor: LuvegiColors.success,
+          ),
+        );
+      } else {
+        final mensaje =
+            body['mensaje']?.toString() ??
+            MensajeError.desdeCodigo(body['error']?.toString());
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(mensaje), backgroundColor: LuvegiColors.error),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(MensajeError.desdeExcepcion(e)),
+          backgroundColor: LuvegiColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _sincronizandoDni = false);
+    }
+  }
+
+  /// Busca la persona en Odoo por DNI. Devuelve null si no existe.
+  Future<Map<String, dynamic>?> _buscarPorDni(String dni) async {
+    try {
+      final url = Uri.parse(
+        '$_baseUrl/admin_usuarios.php?action=buscar_dni&dni=$dni',
+      );
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Content-Type': 'application/json',
+        },
+      );
+      if (response.statusCode != 200) return null;
+      final body = json.decode(response.body);
+      if (body['ok'] != true || body['encontrado'] != true) return null;
+      return Map<String, dynamic>.from(body);
+    } catch (e) {
+      debugPrint('Error buscando DNI en Odoo: $e');
+      return null;
+    }
+  }
+
+  /// Rellena el DNI con los datos que devuelve el backend. Devuelve el mapa
+  /// con la persona encontrada (o null) para que el dialogo la muestre.
+  Future<Map<String, dynamic>?> _autocompletarPorDni(
+    String dni,
+    TextEditingController nombreCtrl,
+    void Function(Map<String, dynamic>?) onResultado,
+  ) async {
+    final data = await _buscarPorDni(dni);
+    if (!mounted) return null;
+    onResultado(data);
+    if (data != null && nombreCtrl.text.trim().isEmpty) {
+      nombreCtrl.text = (data['nombre'] ?? '').toString();
+    }
+    return data;
+  }
+
+  Future<void> _guardarAccesosUsuario({
+    required int usuarioId,
+    required int rolId,
+    required List<int> areasIds,
+    String? nombre,
+    String? usuario,
+    String? dni,
+  }) async {
+    try {
+      final url = Uri.parse('$_baseUrl/admin_usuarios.php?action=guardar');
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'id': usuarioId,
+          'rol_id': rolId,
+          'areas_ids': areasIds,
+          if (nombre != null && nombre.trim().isNotEmpty)
+            'nombre': nombre.trim(),
+          if (usuario != null && usuario.trim().isNotEmpty)
+            'usuario': usuario.trim(),
+          if (dni != null) 'dni': dni.trim(),
+        }),
+      );
+
+      final body = json.decode(response.body);
+      if (response.statusCode == 200 && body['ok'] == true) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Accesos actualizados.')));
+        _registrar(
+          'EDITAR_USUARIO',
+          'usuario',
+          'usuario_id=$usuarioId rol_id=$rolId areas=${areasIds.join(',')}',
+        );
+        _cargarDatos();
+      } else {
+        throw Exception(MensajeError.desdeCodigo(body['mensaje']?.toString()));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(MensajeError.desdeExcepcion(e)), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _crearUsuario(
+    String nombre,
+    String correo,
+    String password,
+    int rolId, {
+    String? dni,
+  }) async {
+    try {
+      final url = Uri.parse(
+        '$_baseUrl/admin_usuarios.php?action=crear_usuario',
+      );
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'nombre': nombre,
+          'correo': correo,
+          'password': password,
+          'rol_id': rolId,
+          if (dni != null && dni.trim().isNotEmpty) 'dni': dni.trim(),
+        }),
+      );
+
+      final body = json.decode(response.body);
+      if (response.statusCode == 200 && body['ok'] == true) {
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Usuario creado con éxito.')),
+          );
+        _registrar('CREAR_USUARIO', 'usuario', '$nombre ($correo)');
+        _cargarDatos();
+      } else {
+        throw Exception(MensajeError.desdeCodigo(body['mensaje']?.toString()));
+      }
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(MensajeError.desdeExcepcion(e)), backgroundColor: Colors.red),
+        );
+    }
+  }
+
+  Future<void> _cambiarPassword(int usuarioId, String nuevaPassword) async {
+    try {
+      final url = Uri.parse(
+        '$_baseUrl/admin_usuarios.php?action=cambiar_password',
+      );
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({'id': usuarioId, 'password': nuevaPassword}),
+      );
+
+      final body = json.decode(response.body);
+      if (response.statusCode == 200 && body['ok'] == true) {
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Contraseña actualizada.')),
+          );
+        _registrar('CAMBIAR_PASSWORD', 'usuario', 'usuario_id=$usuarioId');
+      } else {
+        throw Exception(MensajeError.desdeCodigo(body['mensaje']?.toString()));
+      }
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(MensajeError.desdeExcepcion(e)), backgroundColor: Colors.red),
+        );
+    }
+  }
+
+  // --- MODALES ---
+  void _abrirModalEditar(Map<String, dynamic> usuario) {
+    _debounceDni?.cancel();
+    setState(() {
+      _dniEncontrado = null;
+      _buscandoDni = false;
+    });
+    int fallbackRol = _rolesDisponibles.isNotEmpty
+        ? int.parse(_rolesDisponibles.first['id'].toString())
+        : 3;
+    int rolSeleccionado =
+        int.tryParse(usuario['rol_id'].toString()) ?? fallbackRol;
+
+    bool rolExiste = _rolesDisponibles.any(
+      (r) => r['id'].toString() == rolSeleccionado.toString(),
     );
-  }
+    if (!rolExiste && _rolesDisponibles.isNotEmpty) {
+      rolSeleccionado = fallbackRol;
+    }
 
-  InputDecoration _inputStyle(String label, IconData icon) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: TextStyle(
-          color: textSecondary,
-          fontSize: 14,
-          fontWeight: FontWeight.w600),
-      prefixIcon: Icon(icon, color: accentBlue, size: 22),
-      filled: true,
-      fillColor: Colors.white,
-      border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide.none),
-      enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide:
-              const BorderSide(color: Color(0xFFCBD5E1), width: 1)),
-      focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide(color: accentBlue, width: 2)),
+    final TextEditingController nombreCtrl = TextEditingController(
+      text: usuario['nombre']?.toString() ?? '',
     );
-  }
+    final TextEditingController usuarioCtrl = TextEditingController(
+      text: usuario['usuario']?.toString() ?? '',
+    );
+    final TextEditingController dniCtrl = TextEditingController(
+      text: usuario['dni']?.toString() ?? '',
+    );
+    // Si el usuario cruza con Odoo, el nombre lo pone Odoo: se muestra
+    // pero no se edita a mano.
+    final bool nombreDesdeOdoo = usuario['tiene_odoo'] == true;
 
-  // =================================================
-  // 🔍 BÚSQUEDA + FILTRO COMBINADOS
-  // =================================================
-  List<Usuario> _aplicarFiltros() {
-    final query = _searchCtrl.text.trim().toLowerCase();
-
-    return _usuarios.where((u) {
-      // Filtro de estado
-      final pasaEstado = switch (_filtroEstado) {
-        FiltroEstado.todos => true,
-        FiltroEstado.activos => u.activo,
-        FiltroEstado.bajas => !u.activo,
-      };
-
-      // Filtro de búsqueda
-      final pasaBusqueda = query.isEmpty ||
-          u.nombre.toLowerCase().contains(query) ||
-          u.email.toLowerCase().contains(query) ||
-          u.rol.toLowerCase().contains(query);
-
-      return pasaEstado && pasaBusqueda;
-    }).toList();
-  }
-
-  // Contadores para los badges de los chips
-  int get _totalActivos => _usuarios.where((u) => u.activo).length;
-  int get _totalBajas => _usuarios.where((u) => !u.activo).length;
-
-  // =================================================
-  // 🛠️ ACCIONES
-  // =================================================
-  void _crearUsuario() {
-    final emailCtrl = TextEditingController();
-    final nombreCtrl = TextEditingController();
-    final passCtrl = TextEditingController();
-    String rol = _areas.isNotEmpty ? _areas.first : 'PROYECTOS';
-    bool enviando = false;
-    final formKey = GlobalKey<FormState>();
+    List<int> areasSeleccionadas = [];
+    if (usuario['areas_ids'] != null &&
+        usuario['areas_ids'].toString().isNotEmpty) {
+      areasSeleccionadas = usuario['areas_ids']
+          .toString()
+          .split(',')
+          .map((e) => int.tryParse(e.trim()) ?? 0)
+          .where((id) => id > 0)
+          .toList();
+    }
 
     showDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: Colors.white,
-          surfaceTintColor: Colors.white,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24)),
-          title: Text('Nuevo Usuario',
-              style: TextStyle(
-                  color: primaryDark, fontWeight: FontWeight.w900)),
-          content: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(LuvegiRadius.lg),
+              ),
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 10),
-                  TextFormField(
-                    controller: emailCtrl,
-                    decoration: _inputStyle(
-                        'Email / Usuario', Icons.alternate_email_rounded),
-                    style: TextStyle(
-                        color: primaryDark, fontWeight: FontWeight.w500),
-                    validator: (v) => v!.isEmpty ? 'Requerido' : null,
+                  Text(
+                    'Editar Usuario',
+                    style: LuvegiText.title.copyWith(fontSize: 18),
                   ),
-                  const SizedBox(height: 15),
-                  TextFormField(
-                    controller: nombreCtrl,
-                    decoration: _inputStyle('Nombre Completo',
-                        Icons.face_retouching_natural_rounded),
-                    style: TextStyle(
-                        color: primaryDark, fontWeight: FontWeight.w500),
-                    validator: (v) => v!.isEmpty ? 'Requerido' : null,
-                  ),
-                  const SizedBox(height: 15),
-                  TextFormField(
-                    controller: passCtrl,
-                    obscureText: true,
-                    decoration: _inputStyle(
-                        'Contraseña', Icons.lock_person_outlined),
-                    style: TextStyle(
-                        color: primaryDark, fontWeight: FontWeight.w500),
-                    validator: (v) =>
-                        v!.length < 4 ? 'Muy corta' : null,
-                  ),
-                  const SizedBox(height: 15),
-                  DropdownButtonFormField<String>(
-                    value: rol,
-                    dropdownColor: Colors.white,
-                    style: TextStyle(
-                        color: primaryDark, fontWeight: FontWeight.bold),
-                    decoration: _inputStyle(
-                        'Asignar Área', Icons.apartment_outlined),
-                    items: _areas
-                        .map((r) =>
-                            DropdownMenuItem(value: r, child: Text(r)))
-                        .toList(),
-                    onChanged: (v) =>
-                        setDialogState(() => rol = v!),
+                  const SizedBox(height: 2),
+                  Text(
+                    usuario['nombre']?.toString() ?? '',
+                    style: LuvegiText.caption,
                   ),
                 ],
               ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text('Cancelar',
-                  style: TextStyle(
-                      color: textSecondary,
-                      fontWeight: FontWeight.bold)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryDark,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: enviando
-                  ? null
-                  : () async {
-                      if (formKey.currentState!.validate()) {
-                        setDialogState(() => enviando = true);
-                        final ok = await _service.crear(
-                            widget.token,
-                            emailCtrl.text.trim(),
-                            nombreCtrl.text.trim(),
-                            passCtrl.text,
-                            rol);
-                        if (ok) {
-                          Navigator.pop(ctx);
-                          _snack('✅ Usuario registrado');
-                          _cargar();
-                        } else {
-                          setDialogState(() => enviando = false);
-                          _snack('❌ Error al registrar', error: true);
-                        }
-                      }
-                    },
-              child: enviando
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : const Text('Registrar'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _cambiarRol(Usuario u) {
-    String nuevoRol = u.rol;
-    bool subiendo = false;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24)),
-          title: Text('Actualizar Área',
-              style: TextStyle(
-                  color: primaryDark, fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Cambiando área para:',
-                  style:
-                      TextStyle(color: textSecondary, fontSize: 13)),
-              Text(u.nombre,
-                  style: TextStyle(
-                      color: primaryDark,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16)),
-              const SizedBox(height: 20),
-              DropdownButtonFormField<String>(
-                value: nuevoRol,
-                dropdownColor: Colors.white,
-                style: TextStyle(
-                    color: primaryDark, fontWeight: FontWeight.bold),
-                decoration: _inputStyle('Área del usuario',
-                    Icons.apartment_outlined),
-                items: ({..._areas, nuevoRol}.toList())
-                    .map((r) =>
-                        DropdownMenuItem(value: r, child: Text(r)))
-                    .toList(),
-                onChanged: (v) =>
-                    setDialogState(() => nuevoRol = v!),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text('Cerrar',
-                    style: TextStyle(color: textSecondary))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: accentBlue,
-                  foregroundColor: Colors.white),
-              onPressed: subiendo
-                  ? null
-                  : () async {
-                      setDialogState(() => subiendo = true);
-                      final ok = await _service.cambiarRol(
-                          widget.token, u.id, nuevoRol);
-                      if (ok) {
-                        Navigator.pop(ctx);
-                        _snack('✅ Área actualizada a $nuevoRol');
-                        _cargar();
-                      } else {
-                        setDialogState(() => subiendo = false);
-                        _snack('❌ Error al cambiar el área', error: true);
-                      }
-                    },
-              child: subiendo
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : const Text('Guardar'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _resetPassword(Usuario u) {
-    final passCtrl = TextEditingController();
-    bool subiendo = false;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24)),
-          title: const Text('Nueva Contraseña',
-              style: TextStyle(fontWeight: FontWeight.bold)),
-          content: TextField(
-            controller: passCtrl,
-            obscureText: true,
-            style: TextStyle(color: primaryDark),
-            decoration:
-                _inputStyle('Clave nueva', Icons.key_outlined),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text('Cancelar',
-                    style: TextStyle(color: textSecondary))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange.shade900,
-                  foregroundColor: Colors.white),
-              onPressed: subiendo
-                  ? null
-                  : () async {
-                      if (passCtrl.text.isEmpty) return;
-                      setDialogState(() => subiendo = true);
-                      final ok = await _service.resetPassword(
-                          widget.token, u.id, passCtrl.text);
-                      if (ok) {
-                        Navigator.pop(ctx);
-                        _snack('🔑 Contraseña actualizada');
-                      } else {
-                        setDialogState(() => subiendo = false);
-                        _snack('Error al cambiar contraseña',
-                            error: true);
-                      }
-                    },
-              child: subiendo
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : const Text('Actualizar'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _toggleStatus(Usuario u) async {
-    final ok = await _service.toggle(widget.token, u.id);
-    if (ok) {
-      _snack('Estado de cuenta actualizado');
-      _cargar();
-    }
-  }
-
-  // =================================================
-  // 📱 BUILD PRINCIPAL
-  // =================================================
-  @override
-  Widget build(BuildContext context) {
-    final display = _aplicarFiltros();
-
-    return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        centerTitle: false,
-        title: AnimatedCrossFade(
-          firstChild: Text('Usuarios',
-              style: TextStyle(
-                  color: primaryDark,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 26)),
-          secondChild: SizedBox(
-            height: 40,
-            child: TextField(
-              focusNode: _searchFocus,
-              controller: _searchCtrl,
-              decoration: InputDecoration(
-                prefixIcon:
-                    Icon(Icons.search, color: textSecondary),
-                hintText: 'Buscar por nombre, email o área',
-                hintStyle: TextStyle(color: textSecondary),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding:
-                    const EdgeInsets.symmetric(vertical: 10),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none),
-                suffixIcon: _searchCtrl.text.isNotEmpty
-                    ? IconButton(
-                        icon: Icon(Icons.clear, color: textSecondary),
-                        onPressed: () {
-                          _searchCtrl.clear();
-                          setState(() {});
-                          _searchFocus.requestFocus();
-                        },
-                      )
-                    : null,
-              ),
-              style: TextStyle(
-                  color: primaryDark, fontWeight: FontWeight.w700),
-            ),
-          ),
-          crossFadeState: _searching
-              ? CrossFadeState.showSecond
-              : CrossFadeState.showFirst,
-          duration: const Duration(milliseconds: 250),
-        ),
-        actions: [
-          if (_searching)
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 8, vertical: 12),
-              child: Chip(
-                label: Text('${display.length}'),
-                backgroundColor: const Color(0xFFF1F5F9),
-              ),
-            ),
-          IconButton(
-            icon: Icon(
-                _searching ? Icons.close : Icons.search,
-                color: primaryDark),
-            onPressed: () => setState(() {
-              if (_searching) {
-                _searchCtrl.clear();
-                _searchFocus.unfocus();
-              } else {
-                Future.delayed(const Duration(milliseconds: 100),
-                    () => _searchFocus.requestFocus());
-              }
-              _searching = !_searching;
-            }),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: IconButton.filled(
-              style: IconButton.styleFrom(
-                backgroundColor: accentBlue,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              icon: const Icon(Icons.add, color: Colors.white),
-              onPressed: _crearUsuario,
-            ),
-          ),
-        ],
-      ),
-      body: _loading
-          ? Center(child: CircularProgressIndicator(color: accentBlue))
-          : Column(
-              children: [
-                // ─── NUEVO: barra de filtros de estado ──────────────────
-                _buildFiltroBar(display.length),
-                // ─── Lista de usuarios ───────────────────────────────────
-                Expanded(
-                  child: RefreshIndicator(
-                    onRefresh: _cargar,
-                    child: display.isEmpty
-                        ? _buildEmptyState()
-                        : ListView.builder(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 12),
-                            itemCount: display.length,
-                            itemBuilder: (context, index) =>
-                                _UserCardModern(
-                              user: display[index],
-                              onEditRol: () =>
-                                  _cambiarRol(display[index]),
-                              onToggle: () =>
-                                  _toggleStatus(display[index]),
-                              onResetPass: () =>
-                                  _resetPassword(display[index]),
-                              primaryDark: primaryDark,
-                              textSecondary: textSecondary,
-                            ),
-                          ),
-                  ),
-                ),
-              ],
-            ),
-    );
-  }
-
-  // ─── Barra de chips de filtro ─────────────────────────────────────────────
-  Widget _buildFiltroBar(int resultados) {
-    return Container(
-      width: double.infinity,
-      color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Chips de filtro
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _filtroChip(
-                  label: 'Todos',
-                  count: _usuarios.length,
-                  filtro: FiltroEstado.todos,
-                  colorActivo: primaryDark,
-                  icono: Icons.people_outline_rounded,
-                ),
-                const SizedBox(width: 8),
-                _filtroChip(
-                  label: 'Activos',
-                  count: _totalActivos,
-                  filtro: FiltroEstado.activos,
-                  colorActivo: const Color(0xFF059669),
-                  icono: Icons.check_circle_outline_rounded,
-                ),
-                const SizedBox(width: 8),
-                _filtroChip(
-                  label: 'Bajas',
-                  count: _totalBajas,
-                  filtro: FiltroEstado.bajas,
-                  colorActivo: const Color(0xFFDC2626),
-                  icono: Icons.person_off_outlined,
-                ),
-              ],
-            ),
-          ),
-          // Subtexto de resultados
-          if (_filtroEstado != FiltroEstado.todos ||
-              _searchCtrl.text.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                '$resultados resultado${resultados != 1 ? 's' : ''} encontrado${resultados != 1 ? 's' : ''}',
-                style: TextStyle(
-                    color: textSecondary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _filtroChip({
-    required String label,
-    required int count,
-    required FiltroEstado filtro,
-    required Color colorActivo,
-    required IconData icono,
-  }) {
-    final bool seleccionado = _filtroEstado == filtro;
-    return GestureDetector(
-      onTap: () => setState(() => _filtroEstado = filtro),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: seleccionado ? colorActivo : Colors.transparent,
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(
-            color: seleccionado
-                ? colorActivo
-                : const Color(0xFFCBD5E1),
-            width: 1.5,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icono,
-              size: 15,
-              color: seleccionado ? Colors.white : colorActivo,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: seleccionado ? Colors.white : colorActivo,
-              ),
-            ),
-            const SizedBox(width: 6),
-            // Badge con contador
-            Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 6, vertical: 1),
-              decoration: BoxDecoration(
-                color: seleccionado
-                    ? Colors.white.withOpacity(0.25)
-                    : colorActivo.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                '$count',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                  color: seleccionado ? Colors.white : colorActivo,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─── Estado vacío ─────────────────────────────────────────────────────────
-  Widget _buildEmptyState() {
-    final esFiltroBajas = _filtroEstado == FiltroEstado.bajas;
-    final esFiltroActivos = _filtroEstado == FiltroEstado.activos;
-
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            esFiltroActivos
-                ? Icons.check_circle_outline_rounded
-                : esFiltroBajas
-                    ? Icons.person_off_outlined
-                    : Icons.search_off_rounded,
-            size: 56,
-            color: Colors.grey.shade300,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            esFiltroActivos
-                ? 'Sin usuarios activos'
-                : esFiltroBajas
-                    ? 'Sin usuarios de baja'
-                    : 'Sin resultados',
-            style: TextStyle(
-                color: Colors.grey.shade400,
-                fontSize: 16,
-                fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _searchCtrl.text.isNotEmpty
-                ? 'Prueba con otro término de búsqueda'
-                : 'Cambia el filtro para ver más usuarios',
-            style: TextStyle(
-                color: Colors.grey.shade400, fontSize: 13),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// =================================================
-// ✨ TARJETA DE USUARIO
-// =================================================
-class _UserCardModern extends StatelessWidget {
-  final Usuario user;
-  final VoidCallback onEditRol;
-  final VoidCallback onToggle;
-  final VoidCallback onResetPass;
-  final Color primaryDark;
-  final Color textSecondary;
-
-  const _UserCardModern({
-    required this.user,
-    required this.onEditRol,
-    required this.onToggle,
-    required this.onResetPass,
-    required this.primaryDark,
-    required this.textSecondary,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final Color statusColor =
-        user.activo ? const Color(0xFF059669) : const Color(0xFFDC2626);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-              color: primaryDark.withOpacity(0.05),
-              blurRadius: 15,
-              offset: const Offset(0, 4))
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: IntrinsicHeight(
-          child: Row(
-            children: [
-              Container(width: 6, color: statusColor),
-              Expanded(
-                child: ListTile(
-                  contentPadding: const EdgeInsets.all(16),
-                  leading: CircleAvatar(
-                    radius: 25,
-                    backgroundColor: user.activo
-                        ? const Color(0xFFF0FDF4)
-                        : const Color(0xFFFEF2F2),
-                    child: Icon(
-                      user.activo
-                          ? Icons.verified_user
-                          : Icons.gpp_bad,
-                      color: statusColor,
-                      size: 24,
-                    ),
-                  ),
-                  title: Text(user.nombre,
-                      style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          color: primaryDark,
-                          fontSize: 16)),
-                  subtitle: Column(
+              content: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 4),
-                      Text(user.email,
-                          style: TextStyle(
-                              color: textSecondary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          // Badge de área
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                  color: const Color(0xFFE2E8F0)),
-                            ),
-                            child: Text(user.rol,
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w900,
-                                    color: primaryDark)),
+                      const Text(
+                        'Datos del Usuario',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: nombreCtrl,
+                        enabled: !nombreDesdeOdoo,
+                        decoration: InputDecoration(
+                          labelText: nombreDesdeOdoo
+                              ? 'Nombre (desde Odoo)'
+                              : 'Nombre Completo',
+                          hintText: 'Ej. Juan Pérez',
+                          helperText: nombreDesdeOdoo
+                              ? 'El nombre se toma de Odoo según el DNI. Para corregirlo, borra el DNI.'
+                              : null,
+                          helperMaxLines: 2,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
                           ),
-                          const SizedBox(width: 8),
-                          // Badge de estado
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: user.activo
-                                  ? const Color(0xFFF0FDF4)
-                                  : const Color(0xFFFEF2F2),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              user.activo ? 'ACTIVO' : 'BAJA',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w900,
-                                  color: statusColor),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              LuvegiRadius.md,
                             ),
                           ),
-                        ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: usuarioCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'Correo / Usuario',
+                          hintText: 'usuario@luvegi.com',
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              LuvegiRadius.md,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: dniCtrl,
+                        keyboardType: TextInputType.number,
+                        onChanged: (v) {
+                          _debounceDni?.cancel();
+                          final dni = v.replaceAll(RegExp(r'\D'), '');
+                          if (dni.length < 8) {
+                            setModalState(() {
+                              _dniEncontrado = null;
+                              _buscandoDni = false;
+                            });
+                            return;
+                          }
+                          setModalState(() => _buscandoDni = true);
+                          _debounceDni = Timer(
+                            const Duration(milliseconds: 450),
+                            () => _autocompletarPorDni(
+                              dni,
+                              nombreCtrl,
+                              (data) => setModalState(() {
+                                _dniEncontrado = data;
+                                _buscandoDni = false;
+                              }),
+                            ),
+                          );
+                        },
+                        decoration: InputDecoration(
+                          labelText: 'DNI',
+                          hintText: 'Opcional. Empareja con la foto de Odoo',
+                          helperText: nombreDesdeOdoo
+                              ? 'El nombre se toma de Odoo según el DNI. Para corregirlo, borra el DNI.'
+                              : 'Con el DNI la foto del personal se empareja de forma exacta.',
+                          helperMaxLines: 2,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              LuvegiRadius.md,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (_buscandoDni) ...[
+                        const SizedBox(height: 10),
+                        const LinearProgressIndicator(minHeight: 2),
+                      ],
+                      if (_dniEncontrado != null) ...[
+                        const SizedBox(height: 12),
+                        _vistaPreviaOdoo(_dniEncontrado!),
+                      ],
+                      const Divider(height: 28),
+                      const Text(
+                        '1. Rol del Sistema',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<int>(
+                        value: rolSeleccionado,
+                        decoration: InputDecoration(
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              LuvegiRadius.md,
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                        ),
+                        items: _rolesDisponibles.map((rol) {
+                          return DropdownMenuItem<int>(
+                            value: int.parse(rol['id'].toString()),
+                            child: Text(rol['nombre'].toString()),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null)
+                            setModalState(() => rolSeleccionado = val);
+                        },
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        '2. Área(s) Laboral(es)',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Selecciona las áreas para la visibilidad de REDIR.',
+                        style: LuvegiText.caption.copyWith(fontSize: 12),
+                      ),
+                      const Divider(height: 20),
+                      Container(
+                        constraints: const BoxConstraints(maxHeight: 260),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: LuvegiColors.border),
+                          borderRadius: BorderRadius.circular(LuvegiRadius.md),
+                        ),
+                        child: SingleChildScrollView(
+                          child: Column(
+                            children: [
+                              for (
+                                var i = 0;
+                                i < _areasDisponibles.length;
+                                i++
+                              ) ...[
+                                if (i > 0) const Divider(height: 1),
+                                Builder(
+                                  builder: (_) {
+                                    final area = _areasDisponibles[i];
+                                    final int areaId = int.parse(
+                                      area['id'].toString(),
+                                    );
+                                    final bool check = areasSeleccionadas
+                                        .contains(areaId);
+                                    return CheckboxListTile(
+                                      dense: true,
+                                      activeColor: LuvegiColors.secondary,
+                                      title: Text(
+                                        area['nombre'].toString(),
+                                        style: const TextStyle(fontSize: 13.5),
+                                      ),
+                                      value: check,
+                                      onChanged: (bool? selected) {
+                                        setModalState(() {
+                                          if (selected == true) {
+                                            areasSeleccionadas.add(areaId);
+                                          } else {
+                                            areasSeleccionadas.remove(areaId);
+                                          }
+                                        });
+                                      },
+                                    );
+                                  },
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                  trailing: Container(
-                    decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(10)),
-                    child: IconButton(
-                      icon: Icon(Icons.more_vert_rounded,
-                          color: primaryDark),
-                      onPressed: () => _showOptions(context),
-                    ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(dialogContext);
+                    await _guardarAccesosUsuario(
+                      usuarioId: int.parse(usuario['id'].toString()),
+                      rolId: rolSeleccionado,
+                      areasIds: areasSeleccionadas,
+                      nombre: nombreCtrl.text,
+                      usuario: usuarioCtrl.text,
+                      dni: dniCtrl.text,
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: LuvegiColors.secondary,
+                    foregroundColor: Colors.white,
                   ),
+                  child: const Text('Guardar Cambios'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _abrirModalCrearUsuario() {
+    _debounceDni?.cancel();
+    setState(() {
+      _dniEncontrado = null;
+      _buscandoDni = false;
+    });
+    final TextEditingController nombreCtrl = TextEditingController();
+    final TextEditingController correoCtrl = TextEditingController();
+    final TextEditingController dniCtrl = TextEditingController();
+    final TextEditingController passCtrl = TextEditingController();
+
+    int rolSeleccionado = _rolesDisponibles.isNotEmpty
+        ? int.parse(_rolesDisponibles.first['id'].toString())
+        : 3;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(LuvegiRadius.lg),
+              ),
+              title: Text(
+                'Crear Nuevo Usuario',
+                style: LuvegiText.title.copyWith(fontSize: 18),
+              ),
+              content: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 400),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'DNI',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: dniCtrl,
+                        keyboardType: TextInputType.number,
+                        onChanged: (v) {
+                          _debounceDni?.cancel();
+                          final dni = v.replaceAll(RegExp(r'\D'), '');
+                          if (dni.length < 8) {
+                            setModalState(() {
+                              _dniEncontrado = null;
+                              _buscandoDni = false;
+                            });
+                            return;
+                          }
+                          setModalState(() => _buscandoDni = true);
+                          _debounceDni = Timer(
+                            const Duration(milliseconds: 450),
+                            () => _autocompletarPorDni(
+                              dni,
+                              nombreCtrl,
+                              (data) => setModalState(() {
+                                _dniEncontrado = data;
+                                _buscandoDni = false;
+                              }),
+                            ),
+                          );
+                        },
+                        decoration: InputDecoration(
+                          hintText: 'Ej. 70558609',
+                          helperText:
+                              'Con el DNI se toman el nombre y la foto desde Odoo.',
+                          helperMaxLines: 2,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              LuvegiRadius.md,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (_buscandoDni) ...[
+                        const SizedBox(height: 10),
+                        const LinearProgressIndicator(minHeight: 2),
+                      ],
+                      if (_dniEncontrado != null) ...[
+                        const SizedBox(height: 12),
+                        _vistaPreviaOdoo(_dniEncontrado!),
+                      ],
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Correo Electrónico',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: correoCtrl,
+                        decoration: InputDecoration(
+                          hintText: 'usuario@luvegi.com',
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              LuvegiRadius.md,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Nombre (solo si no hay DNI)',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: nombreCtrl,
+                        decoration: InputDecoration(
+                          hintText: 'Ej. Juan Pérez',
+                          helperText:
+                              'Si escribes un DNI, el nombre se completa solo.',
+                          helperMaxLines: 2,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              LuvegiRadius.md,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Contraseña Inicial',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: passCtrl,
+                        obscureText: true,
+                        decoration: InputDecoration(
+                          hintText: '••••••••',
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              LuvegiRadius.md,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Rol del Sistema',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<int>(
+                        value: rolSeleccionado,
+                        decoration: InputDecoration(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              LuvegiRadius.md,
+                            ),
+                          ),
+                        ),
+                        items: _rolesDisponibles.map((rol) {
+                          return DropdownMenuItem<int>(
+                            value: int.parse(rol['id'].toString()),
+                            child: Text(rol['nombre'].toString()),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null)
+                            setModalState(() => rolSeleccionado = val);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    await _crearUsuario(
+                      nombreCtrl.text,
+                      correoCtrl.text,
+                      passCtrl.text,
+                      rolSeleccionado,
+                      dni: dniCtrl.text,
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: LuvegiColors.secondary,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Crear Usuario'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _abrirModalPassword(Map<String, dynamic> usuario) {
+    final TextEditingController passCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(LuvegiRadius.lg),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Cambiar Contraseña',
+              style: LuvegiText.title.copyWith(fontSize: 18),
+            ),
+            const SizedBox(height: 2),
+            Text(usuario['nombre'] ?? '', style: LuvegiText.caption),
+          ],
+        ),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 350),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Nueva Contraseña',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: passCtrl,
+                obscureText: true,
+                decoration: InputDecoration(
+                  hintText: 'Ingresa la nueva contraseña',
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(LuvegiRadius.md),
+                  ),
+                  prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
                 ),
               ),
             ],
           ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _cambiarPassword(
+                int.parse(usuario['id'].toString()),
+                passCtrl.text,
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: LuvegiColors.secondary,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Actualizar'),
+          ),
+        ],
       ),
     );
   }
 
-  void _showOptions(BuildContext context) {
-    showModalBottomSheet(
+  void _abrirModalEstado(Map<String, dynamic> usuario) {
+    final bool esActivo = usuario['activo'].toString() == '1';
+    final String nombre = usuario['nombre']?.toString() ?? '';
+
+    showDialog(
       context: context,
-      backgroundColor: Colors.white,
-      elevation: 20,
-      shape: const RoundedRectangleBorder(
-          borderRadius:
-              BorderRadius.vertical(top: Radius.circular(28))),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(LuvegiRadius.lg),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 12),
-            Container(
-                width: 45,
-                height: 5,
-                decoration: BoxDecoration(
-                    color: const Color(0xFFE2E8F0),
-                    borderRadius: BorderRadius.circular(10))),
-            const SizedBox(height: 10),
-            _optionTile(Icons.admin_panel_settings_outlined,
-                'Cambiar Área', onEditRol, ctx),
-            _optionTile(Icons.lock_reset_rounded,
-                'Cambiar Contraseña', onResetPass, ctx),
-            _optionTile(
-              user.activo
-                  ? Icons.person_off_outlined
-                  : Icons.person_add_alt_1_outlined,
-              user.activo ? 'Desactivar Cuenta' : 'Activar Cuenta',
-              onToggle,
-              ctx,
-              color: user.activo
-                  ? const Color(0xFFDC2626)
-                  : const Color(0xFF059669),
+            Text(
+              esActivo ? 'Dar de Baja' : 'Activar Usuario',
+              style: LuvegiText.title.copyWith(fontSize: 18),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 2),
+            Text(nombre, style: LuvegiText.caption),
+          ],
+        ),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 380),
+          child: Text(
+            esActivo
+                ? 'El usuario no podrá iniciar sesión ni recibir notificaciones. '
+                    '¿Deseas continuar?'
+                : 'El usuario volverá a poder iniciar sesión y recibir notificaciones. '
+                    '¿Deseas continuar?',
+            style: const TextStyle(fontSize: 13.5, height: 1.4),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _toggleUsuario(int.parse(usuario['id'].toString()));
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: esActivo
+                  ? Colors.red.shade600
+                  : LuvegiColors.secondary,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(esActivo ? 'Dar de Baja' : 'Activar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _toggleUsuario(int usuarioId) async {
+    try {
+      final url = Uri.parse('$_baseUrl/admin_usuarios.php?action=toggle');
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({'id': usuarioId}),
+      );
+
+      final body = json.decode(response.body);
+      if (response.statusCode == 200 && body['ok'] == true) {
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(body['message']?.toString() ?? 'Estado actualizado.'),
+            ),
+          );
+        _registrar(
+          body['activo'] == 1 ? 'ACTIVAR_USUARIO' : 'DAR_BAJA_USUARIO',
+          'usuario',
+          'usuario_id=$usuarioId',
+        );
+        _cargarDatos();
+      } else {
+        throw Exception(MensajeError.desdeCodigo(body['mensaje']?.toString()));
+      }
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(MensajeError.desdeExcepcion(e)), backgroundColor: Colors.red),
+        );
+    }
+  }
+
+  List<dynamic> get _usuariosFiltrados {
+    return _usuarios.where((u) {
+      final bool esActivo = u['activo'].toString() == '1';
+      if (_filtroEstado == 'ACTIVOS' && !esActivo) return false;
+      if (_filtroEstado == 'BAJAS' && esActivo) return false;
+
+      if (_busqueda.isNotEmpty) {
+        final term = _busqueda.toLowerCase();
+        final nombre = (u['nombre'] ?? '').toString().toLowerCase();
+        final correo = (u['usuario'] ?? '').toString().toLowerCase();
+        return nombre.contains(term) || correo.contains(term);
+      }
+      return true;
+    }).toList();
+  }
+
+  /// Avatar del usuario: foto de Odoo (hr.employee) cuando existe,
+  /// iniciales si no, y el icono de siempre para los usuarios inactivos.
+  Widget _avatarUsuario(Map<String, dynamic> user) {
+    final activo = user['activo'].toString() == '1';
+    final fotoUrl = (user['foto_url'] ?? '').toString();
+    final nombre = (user['nombre'] ?? '').toString();
+
+    if (!activo) {
+      return Icon(
+        Icons.person_outline_rounded,
+        color: Colors.red.shade800,
+      );
+    }
+
+    if (fotoUrl.isNotEmpty) {
+      return ClipOval(
+        child: Image.network(
+          fotoUrl,
+          width: 40,
+          height: 40,
+          fit: BoxFit.cover,
+          headers: {
+            'Authorization': 'Bearer ${widget.token}',
+          },
+          errorBuilder: (_, _, _) => _inicialesUsuario(nombre),
+        ),
+      );
+    }
+
+    return _inicialesUsuario(nombre);
+  }
+
+  /// Vista previa de la persona encontrada en Odoo por DNI.
+  Widget _vistaPreviaOdoo(Map<String, dynamic> persona) {
+    final nombre = (persona['nombre'] ?? '').toString();
+    final area = (persona['area'] ?? '').toString();
+    final puesto = (persona['puesto'] ?? '').toString();
+    final fotoUrl = (persona['foto_url'] ?? '').toString();
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: LuvegiColors.menuHover,
+        borderRadius: BorderRadius.circular(LuvegiRadius.md),
+        border: Border.all(color: LuvegiColors.menuSelected),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 22,
+            backgroundColor: LuvegiColors.secondary.withValues(alpha: 0.12),
+            child: fotoUrl.isNotEmpty
+                ? ClipOval(
+                    child: Image.network(
+                      fotoUrl,
+                      width: 44,
+                      height: 44,
+                      fit: BoxFit.cover,
+                      headers: {
+                        'Authorization': 'Bearer ${widget.token}',
+                      },
+                      errorBuilder: (_, _, _) => const Icon(
+                        Icons.person_outline,
+                        color: LuvegiColors.secondary,
+                      ),
+                    ),
+                  )
+                : const Icon(Icons.person_outline, color: LuvegiColors.secondary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  nombre,
+                  style: LuvegiText.body.copyWith(fontWeight: FontWeight.w700),
+                ),
+                if (area.isNotEmpty || puesto.isNotEmpty)
+                  Text(
+                    [area, puesto].where((t) => t.isNotEmpty).join(' · '),
+                    style: LuvegiText.caption,
+                  ),
+                const SizedBox(height: 2),
+                Text(
+                  'Encontrado en Odoo. Se usará este nombre.',
+                  style: LuvegiText.caption.copyWith(
+                    color: LuvegiColors.secondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.check_circle, color: LuvegiColors.success),
+        ],
+      ),
+    );
+  }
+
+  Widget _inicialesUsuario(String nombre) {
+    final partes = nombre
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (partes.isEmpty) {
+      return Icon(
+        Icons.person_outline_rounded,
+        color: Colors.green.shade800,
+      );
+    }
+    String dos(String s) => s.length >= 2 ? s.substring(0, 2).toUpperCase() : s.toUpperCase();
+    final texto = partes.length >= 2
+        ? dos(partes[0][0] + partes[partes.length - 1][0])
+        : dos(partes.first.substring(0, 1));
+    return Text(
+      texto,
+      style: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w800,
+        color: Colors.green.shade800,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isMobile = MediaQuery.of(context).size.width < 800;
+    final filtrados = _usuariosFiltrados;
+
+    return ColoredBox(
+      color: LuvegiColors.background,
+      child: Padding(
+        padding: EdgeInsets.all(isMobile ? LuvegiSpacing.md : LuvegiSpacing.xl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: LuvegiSpacing.lg,
+              runSpacing: LuvegiSpacing.md,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Usuarios',
+                      style: LuvegiText.title.copyWith(fontSize: 24),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Gestión de roles y áreas.',
+                      style: LuvegiText.caption,
+                    ),
+                  ],
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: isMobile ? 160 : 240,
+                      child: TextField(
+                        controller: _busquedaController,
+                        onChanged: (v) => setState(() => _busqueda = v.trim()),
+                        decoration: InputDecoration(
+                          hintText: 'Buscar usuario...',
+                          prefixIcon: const Icon(
+                            Icons.search_rounded,
+                            size: 20,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 10,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              LuvegiRadius.md,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    IconButton(
+                      onPressed: _cargarDatos,
+                      icon: const Icon(Icons.refresh_rounded),
+                      tooltip: 'Actualizar',
+                    ),
+                    const SizedBox(width: 4),
+                    OutlinedButton.icon(
+                      onPressed: _sincronizandoDni ? null : _sincronizarDni,
+                      icon: _sincronizandoDni
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.badge_outlined, size: 18),
+                      label: Text(
+                        _sincronizandoDni ? 'Sincronizando...' : 'Sincronizar DNI',
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: LuvegiColors.secondary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: LuvegiColors.secondary,
+                        borderRadius: BorderRadius.circular(LuvegiRadius.sm),
+                      ),
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.add_rounded,
+                          color: Colors.white,
+                        ),
+                        tooltip: 'Crear Usuario',
+                        onPressed: _abrirModalCrearUsuario,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: LuvegiSpacing.lg),
+
+            Row(
+              children: [
+                _buildFilterChip('Todos', 'TODOS', _usuarios.length),
+                const SizedBox(width: 8),
+                _buildFilterChip(
+                  'Activos',
+                  'ACTIVOS',
+                  _usuarios.where((u) => u['activo'].toString() == '1').length,
+                ),
+                const SizedBox(width: 8),
+                _buildFilterChip(
+                  'Bajas',
+                  'BAJAS',
+                  _usuarios.where((u) => u['activo'].toString() == '0').length,
+                ),
+              ],
+            ),
+            const SizedBox(height: LuvegiSpacing.lg),
+
+            Expanded(
+              child: _cargando
+                  ? const Center(child: CircularProgressIndicator())
+                  : filtrados.isEmpty
+                  ? const Center(child: Text('No se encontraron usuarios.'))
+                  : ListView.separated(
+                      itemCount: filtrados.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (_, index) {
+                        final user = filtrados[index];
+                        final String areasTexto = (user['areas_nombres'] ?? '')
+                            .toString();
+
+                        return Container(
+                          padding: const EdgeInsets.all(LuvegiSpacing.lg),
+                          decoration: BoxDecoration(
+                            color: LuvegiColors.surface,
+                            borderRadius: BorderRadius.circular(
+                              LuvegiRadius.md,
+                            ),
+                            border: Border.all(color: LuvegiColors.border),
+                          ),
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                backgroundColor:
+                                    user['activo'].toString() == '1'
+                                    ? const Color(0xFFE9F8EF)
+                                    : const Color(0xFFFFEAEA),
+                                child: _avatarUsuario(user),
+                              ),
+                              const SizedBox(width: LuvegiSpacing.lg),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      user['nombre'] ?? '',
+                                      style: LuvegiText.title.copyWith(
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      user['usuario'] ?? '',
+                                      style: LuvegiText.caption,
+                                    ),
+                                    if ((user['dni'] ?? '').toString().isNotEmpty) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'DNI: ${user['dni']}',
+                                        style: LuvegiText.caption.copyWith(
+                                          color: LuvegiColors.secondary,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                    if (areasTexto.isNotEmpty) ...[
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.apartment_rounded,
+                                            size: 14,
+                                            color: LuvegiColors.secondary,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Expanded(
+                                            child: Text(
+                                              'Áreas: $areasTexto',
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: LuvegiColors.secondary,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: LuvegiColors.surfaceHover,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: LuvegiColors.border,
+                                  ),
+                                ),
+                                child: Text(
+                                  user['rol_nombre'] ?? 'USUARIO',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              PopupMenuButton<String>(
+                                icon: const Icon(Icons.more_vert_rounded),
+                                onSelected: (value) {
+                                  Future<void>.delayed(
+                                    const Duration(milliseconds: 120),
+                                    () {
+                                      if (value == 'editar')
+                                        _abrirModalEditar(
+                                          Map<String, dynamic>.from(user),
+                                        );
+                                      else if (value == 'password')
+                                        _abrirModalPassword(
+                                          Map<String, dynamic>.from(user),
+                                        );
+                                      else if (value == 'estado')
+                                        _abrirModalEstado(
+                                          Map<String, dynamic>.from(user),
+                                        );
+                                    },
+                                  );
+                                },
+                                itemBuilder: (context) => [
+                                  const PopupMenuItem(
+                                    value: 'editar',
+                                    child: Text('Editar Usuario'),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'password',
+                                    child: Text('Cambiar Contraseña'),
+                                  ),
+                                  if (user['activo'].toString() == '1')
+                                    const PopupMenuItem(
+                                      value: 'estado',
+                                      child: Text('Dar de Baja'),
+                                    )
+                                  else
+                                    const PopupMenuItem(
+                                      value: 'estado',
+                                      child: Text('Activar'),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _optionTile(IconData icon, String title, VoidCallback onTap,
-      BuildContext ctx,
-      {Color? color}) {
-    return ListTile(
-      leading: Icon(icon, color: color ?? primaryDark),
-      title: Text(title,
-          style: TextStyle(
-              fontWeight: FontWeight.bold, color: color ?? primaryDark)),
-      onTap: () {
-        Navigator.pop(ctx);
-        onTap();
-      },
+  Widget _buildFilterChip(String label, String value, int count) {
+    final bool active = _filtroEstado == value;
+    return ChoiceChip(
+      label: Text('$label $count'),
+      selected: active,
+      selectedColor: LuvegiColors.secondary,
+      labelStyle: TextStyle(
+        color: active ? Colors.white : LuvegiColors.textPrimary,
+        fontWeight: FontWeight.bold,
+        fontSize: 12,
+      ),
+      onSelected: (_) => setState(() => _filtroEstado = value),
     );
+  }
+
+  // Registra actividad en la bitácora sin bloquear la UI.
+  void _registrar(String accion, String entidad, String detalle) {
+    try {
+      _auditoria
+          .registrarActividad(
+            widget.token,
+            accion: accion,
+            entidad: entidad,
+            detalle: detalle,
+          )
+          .catchError((_) {});
+    } catch (_) {}
   }
 }

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import '../utils/mensaje_error.dart';
 
 class ForgotPasswordPage extends StatefulWidget {
   const ForgotPasswordPage({super.key});
@@ -74,9 +75,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     try {
       final response = await _dio.post(
         '/request_reset.php',
-        data: jsonEncode({
-          'email': _emailCtrl.text.trim(),
-        }),
+        data: jsonEncode({'email': _emailCtrl.text.trim()}),
         options: Options(
           contentType: Headers.jsonContentType,
           responseType: ResponseType.plain,
@@ -94,16 +93,16 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         );
       } else {
         setState(() {
-          _errorMessage = data['error']?.toString() ?? 'Error al enviar código';
+          _errorMessage = MensajeError.desdeCodigo(data['error']?.toString());
         });
       }
     } on DioException catch (e) {
       setState(() {
-        _errorMessage = _getDioError(e, "Error de conexión");
+        _errorMessage = _getDioError(e);
       });
     } catch (e) {
       setState(() {
-        _errorMessage = "Error inesperado: $e";
+        _errorMessage = MensajeError.desdeExcepcion(e);
       });
     } finally {
       if (mounted) {
@@ -160,16 +159,16 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         Navigator.of(context).maybePop();
       } else {
         setState(() {
-          _errorMessage = data['error']?.toString() ?? 'Error al actualizar';
+          _errorMessage = MensajeError.desdeCodigo(data['error']?.toString());
         });
       }
     } on DioException catch (e) {
       setState(() {
-        _errorMessage = _getDioError(e, "Error al actualizar");
+        _errorMessage = _getDioError(e);
       });
     } catch (e) {
       setState(() {
-        _errorMessage = "Error inesperado: $e";
+        _errorMessage = MensajeError.desdeExcepcion(e);
       });
     } finally {
       if (mounted) {
@@ -178,21 +177,17 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     }
   }
 
-  String _getDioError(DioException e, String defaultMessage) {
+  String _getDioError(DioException e) {
     final data = e.response?.data;
 
     try {
       final parsed = _parseResponse(data);
       if (parsed['error'] != null) {
-        return parsed['error'].toString();
+        return MensajeError.desdeCodigo(parsed['error'].toString());
       }
     } catch (_) {}
 
-    if (data is String && data.trim().isNotEmpty) {
-      return data;
-    }
-
-    return e.message ?? defaultMessage;
+    return MensajeError.desdeExcepcion(e);
   }
 
   @override
@@ -215,10 +210,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              primaryBlue,
-              Color(0xFF001A33),
-            ],
+            colors: [primaryBlue, Color(0xFF001A33)],
           ),
         ),
         child: Center(
@@ -240,10 +232,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                       icon: Icons.email_outlined,
                     ),
                     const SizedBox(height: 30),
-                    _buildActionButton(
-                      "ENVIAR CÓDIGO",
-                      _solicitarCodigo,
-                    ),
+                    _buildActionButton("ENVIAR CÓDIGO", _solicitarCodigo),
                   ],
                 ),
               ),
@@ -268,10 +257,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                       isPassword: true,
                     ),
                     const SizedBox(height: 30),
-                    _buildActionButton(
-                      "ACTUALIZAR CLAVE",
-                      _cambiarPassword,
-                    ),
+                    _buildActionButton("ACTUALIZAR CLAVE", _cambiarPassword),
                     TextButton(
                       onPressed: _loading
                           ? null
@@ -311,15 +297,11 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white24),
             ),
-            child: Icon(
-              icon,
-              size: 60,
-              color: Colors.white,
-            ),
+            child: Icon(icon, size: 60, color: Colors.white),
           ),
           const SizedBox(height: 30),
           Container(
@@ -330,7 +312,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
+                  color: Colors.black.withValues(alpha: 0.3),
                   blurRadius: 20,
                   offset: const Offset(0, 10),
                 ),
@@ -350,10 +332,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                 const SizedBox(height: 8),
                 Text(
                   subtitle,
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 14,
-                  ),
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
                 ),
                 const SizedBox(height: 25),
                 if (_errorMessage != null) _buildErrorBanner(),
@@ -389,8 +368,9 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         TextField(
           controller: controller,
           obscureText: isPassword && !_isPasswordVisible,
-          keyboardType:
-              isPassword ? TextInputType.visiblePassword : TextInputType.text,
+          keyboardType: isPassword
+              ? TextInputType.visiblePassword
+              : TextInputType.text,
           textInputAction: TextInputAction.next,
           enableSuggestions: !isPassword,
           autocorrect: !isPassword,
@@ -400,15 +380,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           ),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(
-              color: Colors.grey.shade400,
-              fontSize: 14,
-            ),
-            prefixIcon: Icon(
-              icon,
-              color: primaryBlue,
-              size: 20,
-            ),
+            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+            prefixIcon: Icon(icon, color: primaryBlue, size: 20),
             suffixIcon: isPassword
                 ? IconButton(
                     icon: Icon(
@@ -432,16 +405,11 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(15),
-              borderSide: BorderSide(
-                color: Colors.grey.shade200,
-              ),
+              borderSide: BorderSide(color: Colors.grey.shade200),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(15),
-              borderSide: const BorderSide(
-                color: primaryBlue,
-                width: 2,
-              ),
+              borderSide: const BorderSide(color: primaryBlue, width: 2),
             ),
           ),
         ),
@@ -458,7 +426,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           backgroundColor: primaryBlue,
           foregroundColor: Colors.white,
           elevation: 5,
-          shadowColor: primaryBlue.withOpacity(0.4),
+          shadowColor: primaryBlue.withValues(alpha: 0.4),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
           ),
@@ -491,17 +459,11 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       decoration: BoxDecoration(
         color: Colors.red.shade50,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.red.shade100,
-        ),
+        border: Border.all(color: Colors.red.shade100),
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.error_outline,
-            color: Colors.red,
-            size: 20,
-          ),
+          const Icon(Icons.error_outline, color: Colors.red, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Text(

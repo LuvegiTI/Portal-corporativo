@@ -11,13 +11,10 @@ class AuthGate extends StatelessWidget {
     return FutureBuilder<Map<String, dynamic>?>(
       future: AuthService().getSession(),
       builder: (context, snapshot) {
-
         // 🔄 Cargando sesión
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
+            body: Center(child: CircularProgressIndicator()),
           );
         }
 
@@ -39,12 +36,9 @@ class AuthGate extends StatelessWidget {
         List<String> listaPermisos = [];
 
         if (permisosRaw is String) {
-          listaPermisos =
-              permisosRaw.isNotEmpty ? permisosRaw.split(',') : [];
-        } 
-        else if (permisosRaw is List) {
-          listaPermisos =
-              permisosRaw.map((e) => e.toString()).toList();
+          listaPermisos = permisosRaw.isNotEmpty ? permisosRaw.split(',') : [];
+        } else if (permisosRaw is List) {
+          listaPermisos = permisosRaw.map((e) => e.toString()).toList();
         }
 
         // =====================================================

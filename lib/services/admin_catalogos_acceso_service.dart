@@ -4,7 +4,8 @@ import 'package:http/http.dart' as http;
 class CatalogosAccesoException implements Exception {
   final String message;
   const CatalogosAccesoException(this.message);
-  @override String toString() => message;
+  @override
+  String toString() => message;
 }
 
 class AdminCatalogosAccesoService {
@@ -51,10 +52,15 @@ class AdminCatalogosAccesoService {
     return _decode(response);
   }
 
-  Future<void> _post(String token, String action, Map<String, dynamic> data) async {
+  Future<void> _post(
+    String token,
+    String action,
+    Map<String, dynamic> data,
+  ) async {
     final response = await http.post(
       Uri.parse('$baseUrl/admin_catalogos_acceso.php?action=$action'),
-      headers: _headers(token), body: jsonEncode(data),
+      headers: _headers(token),
+      body: jsonEncode(data),
     );
     _decode(response);
   }
@@ -62,14 +68,24 @@ class AdminCatalogosAccesoService {
   Map<String, dynamic> _decode(http.Response response) {
     try {
       final body = jsonDecode(utf8.decode(response.bodyBytes));
-      if (body is Map && response.statusCode >= 200 && response.statusCode < 300 && body['ok'] == true) {
+      if (body is Map &&
+          response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          body['ok'] == true) {
         return Map<String, dynamic>.from(body);
       }
       if (body is Map) {
-        throw CatalogosAccesoException((body['mensaje'] ?? body['error'] ?? 'Operación rechazada.').toString());
+        throw CatalogosAccesoException(
+          (body['mensaje'] ?? body['error'] ?? 'Operación rechazada.')
+              .toString(),
+        );
       }
-    } on CatalogosAccesoException { rethrow; } catch (_) {}
-    throw const CatalogosAccesoException('El servidor devolvió una respuesta inválida.');
+    } on CatalogosAccesoException {
+      rethrow;
+    } catch (_) {}
+    throw const CatalogosAccesoException(
+      'El servidor devolvió una respuesta inválida.',
+    );
   }
 
   List<Map<String, dynamic>> _lista(dynamic value) => value is List

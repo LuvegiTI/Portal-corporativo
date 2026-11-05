@@ -39,9 +39,7 @@ class LuvegiTextField extends StatelessWidget {
         textInputAction: textInputAction,
         onSubmitted: onSubmitted,
         cursorColor: LuvegiColors.secondary,
-        style: LuvegiText.body.copyWith(
-          fontWeight: FontWeight.w600,
-        ),
+        style: LuvegiText.body.copyWith(fontWeight: FontWeight.w600),
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
@@ -49,10 +47,7 @@ class LuvegiTextField extends StatelessWidget {
           fillColor: LuvegiColors.surface,
           prefixIcon: prefixIcon == null
               ? null
-              : Icon(
-                  prefixIcon,
-                  color: LuvegiColors.textSecondary,
-                ),
+              : Icon(prefixIcon, color: LuvegiColors.textSecondary),
           labelStyle: LuvegiText.caption.copyWith(
             color: LuvegiColors.textSecondary,
           ),
@@ -65,15 +60,11 @@ class LuvegiTextField extends StatelessWidget {
           ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(LuvegiRadius.sm),
-            borderSide: const BorderSide(
-              color: LuvegiColors.border,
-            ),
+            borderSide: const BorderSide(color: LuvegiColors.border),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(LuvegiRadius.sm),
-            borderSide: const BorderSide(
-              color: LuvegiColors.border,
-            ),
+            borderSide: const BorderSide(color: LuvegiColors.border),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(LuvegiRadius.sm),

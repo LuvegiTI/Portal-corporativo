@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../pages/api_client.dart';
 import '../theme/luvegi_colors.dart'; // Asumo que usas tu archivo de colores
 import '../theme/luvegi_radius.dart';
 import '../theme/luvegi_spacing.dart';
+import '../utils/mensaje_error.dart';
 
 class PluzCortesPage extends StatefulWidget {
-  const PluzCortesPage({super.key});
+  final String token;
+
+  const PluzCortesPage({super.key, required this.token});
 
   @override
   State<PluzCortesPage> createState() => _PluzCortesPageState();
@@ -24,18 +28,36 @@ class _PluzCortesPageState extends State<PluzCortesPage> {
   // Función para consumir tu API en PHP
   Future<List<dynamic>> fetchCortes() async {
     // Reemplaza esta URL con la ruta real de tu servidor PHP
-    final url = Uri.parse('https://portal.luvegi.com/api_luvegi/api_cortes.php');
-    
-    try {
-      final response = await http.get(url);
+    final url = Uri.parse(
+      'https://portal.luvegi.com/api_luvegi/api_cortes.php',
+    );
 
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      } else {
-        throw Exception('Error en el servidor al cargar los cortes.');
+    try {
+      final response = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer ${widget.token}'},
+      );
+
+      if (response.statusCode == 401) {
+        await ApiClient().forzarLogoutGlobal();
+        throw Exception('Tu sesión expiró. Vuelve a iniciar sesión.');
       }
-    } catch (e) {
-      throw Exception('Error de conexión: Verifica tu red o el backend.');
+
+      if (response.statusCode != 200) {
+        throw Exception(MensajeError.desdeCodigo('ERROR_GENERICO'));
+      }
+
+      final dynamic data = json.decode(response.body);
+
+      if (data is Map && data['ok'] == false) {
+        throw Exception(MensajeError.desdeCodigo(data['mensaje']?.toString()));
+      }
+
+      return (data as List).cast<dynamic>();
+    } on http.ClientException {
+      throw Exception(MensajeError.desdeCodigo('SIN_CONEXION'));
+    } on FormatException {
+      throw Exception(MensajeError.desdeCodigo('ERROR_GENERICO'));
     }
   }
 
@@ -76,7 +98,7 @@ class _PluzCortesPageState extends State<PluzCortesPage> {
             ],
           ),
         ),
-        
+
         // Listado de cortes
         Expanded(
           child: RefreshIndicator(
@@ -96,12 +118,18 @@ class _PluzCortesPageState extends State<PluzCortesPage> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                        const Icon(
+                          Icons.error_outline,
+                          color: Colors.red,
+                          size: 48,
+                        ),
                         const SizedBox(height: 16),
                         Text(
                           '${snapshot.error}',
                           textAlign: TextAlign.center,
-                          style: const TextStyle(color: LuvegiColors.textPrimary),
+                          style: const TextStyle(
+                            color: LuvegiColors.textPrimary,
+                          ),
                         ),
                         const SizedBox(height: 16),
                         ElevatedButton(
@@ -116,13 +144,17 @@ class _PluzCortesPageState extends State<PluzCortesPage> {
                     ),
                   );
                 } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return ListView( // Usamos ListView para que el RefreshIndicator funcione
+                  return ListView(
+                    // Usamos ListView para que el RefreshIndicator funcione
                     children: const [
                       SizedBox(height: 100),
                       Center(
                         child: Text(
                           'No hay cortes programados en este momento.',
-                          style: TextStyle(fontSize: 16, color: LuvegiColors.textSecondary),
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: LuvegiColors.textSecondary,
+                          ),
                         ),
                       ),
                     ],
@@ -132,7 +164,9 @@ class _PluzCortesPageState extends State<PluzCortesPage> {
                 final cortes = snapshot.data!;
 
                 return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: LuvegiSpacing.lg),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: LuvegiSpacing.lg,
+                  ),
                   itemCount: cortes.length,
                   itemBuilder: (context, index) {
                     final corte = cortes[index];
@@ -150,13 +184,19 @@ class _PluzCortesPageState extends State<PluzCortesPage> {
                           ),
                         ],
                       ),
-                      child: ListTile(
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: ListTile(
                         contentPadding: const EdgeInsets.all(LuvegiSpacing.md),
                         leading: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFFF4E5), // Fondo naranja claro
-                            borderRadius: BorderRadius.circular(LuvegiRadius.sm),
+                            color: const Color(
+                              0xFFFFF4E5,
+                            ), // Fondo naranja claro
+                            borderRadius: BorderRadius.circular(
+                              LuvegiRadius.sm,
+                            ),
                           ),
                           child: const Icon(
                             Icons.bolt_rounded,
@@ -187,7 +227,11 @@ class _PluzCortesPageState extends State<PluzCortesPage> {
                               const SizedBox(height: 8),
                               Row(
                                 children: [
-                                  const Icon(Icons.calendar_month_rounded, size: 16, color: Colors.redAccent),
+                                  const Icon(
+                                    Icons.calendar_month_rounded,
+                                    size: 16,
+                                    color: Colors.redAccent,
+                                  ),
                                   const SizedBox(width: 4),
                                   Text(
                                     corte['fecha'] ?? '',
@@ -201,6 +245,7 @@ class _PluzCortesPageState extends State<PluzCortesPage> {
                             ],
                           ),
                         ),
+                      ),
                       ),
                     );
                   },

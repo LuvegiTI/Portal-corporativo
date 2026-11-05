@@ -3,21 +3,24 @@ class ReporteOrdenCompra {
   final String proveedor;
   final String fechaConfirmacion;
   final String divisa;
+  final double tipoCambio;
   final String producto;
   final String descripcion;
-  final String cantidad;
+  final double cantidad;
   final String unidadNegocio;
   final String equipo;
   final String pedido;
-  final String precioUnitario;
-  final String sinImpuesto;
-  final String conImpuesto;
+  final double precioUnitario;
+  final String impuesto;
+  final double sinImpuesto;
+  final double conImpuesto;
 
-  const ReporteOrdenCompra({
+  ReporteOrdenCompra({
     required this.ordenCompra,
     required this.proveedor,
     required this.fechaConfirmacion,
     required this.divisa,
+    required this.tipoCambio,
     required this.producto,
     required this.descripcion,
     required this.cantidad,
@@ -25,89 +28,28 @@ class ReporteOrdenCompra {
     required this.equipo,
     required this.pedido,
     required this.precioUnitario,
+    required this.impuesto,
     required this.sinImpuesto,
     required this.conImpuesto,
   });
 
   factory ReporteOrdenCompra.fromJson(Map<String, dynamic> json) {
-    String text(String key) => (json[key] ?? '').toString();
-
     return ReporteOrdenCompra(
-      ordenCompra: text('orden_compra'),
-      proveedor: text('proveedor'),
-      fechaConfirmacion: text('fecha_confirmacion'),
-      divisa: text('divisa'),
-      producto: text('producto'),
-      descripcion: text('descripcion'),
-      cantidad: text('cantidad'),
-      unidadNegocio: text('unidad_negocio'),
-      equipo: text('equipo'),
-      pedido: text('pedido'),
-      precioUnitario: text('precio_unitario'),
-      sinImpuesto: text('sin_impuesto'),
-      conImpuesto: text('con_impuesto'),
-    );
-  }
-}
-
-class ReporteOrdenCompraResponse {
-  final List<ReporteOrdenCompra> data;
-  final int page;
-  final int pageSize;
-  final int totalPages;
-  final int totalLineas;
-  final double elapsed;
-  final double totalSinImpuesto;
-  final double totalConImpuesto;
-
-  const ReporteOrdenCompraResponse({
-    required this.data,
-    required this.page,
-    required this.pageSize,
-    required this.totalPages,
-    required this.totalLineas,
-    required this.elapsed,
-    required this.totalSinImpuesto,
-    required this.totalConImpuesto,
-  });
-
-  factory ReporteOrdenCompraResponse.fromJson(Map<String, dynamic> json) {
-    final rawData = json['data'];
-
-    final data = rawData is List
-        ? rawData
-            .whereType<Map>()
-            .map(
-              (e) => ReporteOrdenCompra.fromJson(
-                Map<String, dynamic>.from(e),
-              ),
-            )
-            .toList()
-        : <ReporteOrdenCompra>[];
-
-    int integer(String key, [int fallback = 0]) {
-      return int.tryParse(
-            (json[key] ?? fallback).toString(),
-          ) ??
-          fallback;
-    }
-
-    double decimal(String key) {
-      return double.tryParse(
-            (json[key] ?? 0).toString(),
-          ) ??
-          0;
-    }
-
-    return ReporteOrdenCompraResponse(
-      data: data,
-      page: integer('page', 1),
-      pageSize: integer('page_size', 50),
-      totalPages: integer('total_pages'),
-      totalLineas: integer('total_lineas'),
-      elapsed: decimal('elapsed'),
-      totalSinImpuesto: decimal('total_sin_impuesto'),
-      totalConImpuesto: decimal('total_con_impuesto'),
+      ordenCompra: (json['orden_compra'] ?? '').toString(),
+      proveedor: (json['proveedor'] ?? '').toString(),
+      fechaConfirmacion: (json['fecha_confirmacion'] ?? '').toString(),
+      divisa: (json['divisa'] ?? 'PEN').toString(),
+      tipoCambio: double.tryParse('${json['tipo_cambio']}') ?? 1.0,
+      producto: (json['producto'] ?? '').toString(),
+      descripcion: (json['descripcion'] ?? '').toString(),
+      cantidad: double.tryParse('${json['cantidad']}') ?? 0.0,
+      unidadNegocio: (json['unidad_negocio'] ?? '').toString(),
+      equipo: (json['equipo'] ?? '').toString(),
+      pedido: (json['pedido'] ?? '').toString(),
+      precioUnitario: double.tryParse('${json['precio_unitario']}') ?? 0.0,
+      impuesto: (json['impuesto'] ?? 'Sin Impuesto').toString(),
+      sinImpuesto: double.tryParse('${json['sin_impuesto']}') ?? 0.0,
+      conImpuesto: double.tryParse('${json['con_impuesto']}') ?? 0.0,
     );
   }
 }

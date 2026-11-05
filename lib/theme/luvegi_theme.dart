@@ -42,20 +42,13 @@ class LuvegiTheme {
         surfaceTintColor: LuvegiColors.surface,
         elevation: 0,
         centerTitle: false,
-        iconTheme: IconThemeData(
-          color: LuvegiColors.secondary,
-        ),
+        iconTheme: IconThemeData(color: LuvegiColors.secondary),
         titleTextStyle: TextStyle(
           color: LuvegiColors.textPrimary,
           fontSize: 18,
           fontWeight: FontWeight.w700,
         ),
-        shape: Border(
-          bottom: BorderSide(
-            color: LuvegiColors.border,
-            width: 1,
-          ),
-        ),
+        shape: Border(bottom: BorderSide(color: LuvegiColors.border, width: 1)),
       ),
 
       drawerTheme: const DrawerThemeData(
@@ -71,9 +64,7 @@ class LuvegiTheme {
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(LuvegiRadius.lg),
-          side: const BorderSide(
-            color: LuvegiColors.border,
-          ),
+          side: const BorderSide(color: LuvegiColors.border),
         ),
       ),
 
@@ -83,13 +74,28 @@ class LuvegiTheme {
         space: 1,
       ),
 
+      chipTheme: ChipThemeData(
+        backgroundColor: LuvegiColors.surface,
+        side: const BorderSide(color: LuvegiColors.border),
+        labelStyle: const TextStyle(
+          color: LuvegiColors.textPrimary,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+        secondaryLabelStyle: const TextStyle(
+          color: LuvegiColors.textPrimary,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(LuvegiRadius.sm),
+        ),
+      ),
+
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: LuvegiColors.surface,
-        hintStyle: const TextStyle(
-          color: LuvegiColors.textHint,
-          fontSize: 14,
-        ),
+        hintStyle: const TextStyle(color: LuvegiColors.textHint, fontSize: 14),
         labelStyle: const TextStyle(
           color: LuvegiColors.textSecondary,
           fontSize: 14,
@@ -101,35 +107,23 @@ class LuvegiTheme {
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(LuvegiRadius.sm),
-          borderSide: const BorderSide(
-            color: LuvegiColors.border,
-          ),
+          borderSide: const BorderSide(color: LuvegiColors.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(LuvegiRadius.sm),
-          borderSide: const BorderSide(
-            color: LuvegiColors.border,
-          ),
+          borderSide: const BorderSide(color: LuvegiColors.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(LuvegiRadius.sm),
-          borderSide: const BorderSide(
-            color: LuvegiColors.secondary,
-            width: 2,
-          ),
+          borderSide: const BorderSide(color: LuvegiColors.secondary, width: 2),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(LuvegiRadius.sm),
-          borderSide: const BorderSide(
-            color: LuvegiColors.error,
-          ),
+          borderSide: const BorderSide(color: LuvegiColors.error),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(LuvegiRadius.sm),
-          borderSide: const BorderSide(
-            color: LuvegiColors.error,
-            width: 2,
-          ),
+          borderSide: const BorderSide(color: LuvegiColors.error, width: 2),
         ),
       ),
 
@@ -139,10 +133,7 @@ class LuvegiTheme {
           foregroundColor: Colors.white,
           elevation: 0,
           minimumSize: const Size(120, 46),
-          padding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 14,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(LuvegiRadius.sm),
           ),
@@ -154,30 +145,19 @@ class LuvegiTheme {
         style: OutlinedButton.styleFrom(
           foregroundColor: LuvegiColors.secondary,
           minimumSize: const Size(120, 46),
-          padding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 14,
-          ),
-          side: const BorderSide(
-            color: LuvegiColors.secondary,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          side: const BorderSide(color: LuvegiColors.secondary),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(LuvegiRadius.sm),
           ),
-          textStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-          ),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
         ),
       ),
 
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: LuvegiColors.secondary,
-          textStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-          ),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(LuvegiRadius.sm),
           ),
@@ -197,13 +177,8 @@ class LuvegiTheme {
 
           return Colors.transparent;
         }),
-        side: const BorderSide(
-          color: LuvegiColors.border,
-          width: 1.5,
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(4),
-        ),
+        side: const BorderSide(color: LuvegiColors.border, width: 1.5),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
       ),
 
       radioTheme: RadioThemeData(
@@ -246,10 +221,7 @@ class LuvegiTheme {
 
       snackBarTheme: SnackBarThemeData(
         backgroundColor: LuvegiColors.textPrimary,
-        contentTextStyle: const TextStyle(
-          color: Colors.white,
-          fontSize: 14,
-        ),
+        contentTextStyle: const TextStyle(color: Colors.white, fontSize: 14),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(LuvegiRadius.sm),
@@ -263,9 +235,7 @@ class LuvegiTheme {
         textStyle: LuvegiText.menu,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(LuvegiRadius.md),
-          side: const BorderSide(
-            color: LuvegiColors.border,
-          ),
+          side: const BorderSide(color: LuvegiColors.border),
         ),
       ),
 
@@ -274,10 +244,7 @@ class LuvegiTheme {
         textColor: LuvegiColors.textPrimary,
         selectedColor: LuvegiColors.secondary,
         selectedTileColor: LuvegiColors.menuHover,
-        contentPadding: EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 2,
-        ),
+        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 2),
       ),
 
       progressIndicatorTheme: const ProgressIndicatorThemeData(
@@ -286,11 +253,9 @@ class LuvegiTheme {
 
       scrollbarTheme: ScrollbarThemeData(
         thumbColor: WidgetStateProperty.all(
-          LuvegiColors.secondary.withOpacity(0.65),
+          LuvegiColors.secondary.withValues(alpha: 0.65),
         ),
-        trackColor: WidgetStateProperty.all(
-          LuvegiColors.border,
-        ),
+        trackColor: WidgetStateProperty.all(LuvegiColors.border),
         radius: const Radius.circular(20),
         thickness: WidgetStateProperty.all(8),
       ),

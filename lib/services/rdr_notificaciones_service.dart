@@ -32,7 +32,8 @@ class RdrNotificacion {
       codigo: '${json['codigo'] ?? ''}',
       estado: '${json['estado'] ?? ''}',
       creadaEn: DateTime.tryParse('${json['creada_en'] ?? ''}'),
-      leida: json['leida'] == true ||
+      leida:
+          json['leida'] == true ||
           json['leida'] == 1 ||
           '${json['leida']}' == '1',
     );
@@ -53,10 +54,10 @@ class RdrNotificacionesService {
   static const String baseUrl = 'https://portal.luvegi.com/api_luvegi';
 
   Map<String, String> _headers(String token) => {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-      };
+    'Content-Type': 'application/json; charset=utf-8',
+    'Accept': 'application/json',
+    'Authorization': 'Bearer $token',
+  };
 
   Future<RdrNotificacionesResultado> listar(
     String token, {
@@ -64,9 +65,9 @@ class RdrNotificacionesService {
   }) async {
     final response = await http
         .get(
-          Uri.parse('$baseUrl/notificaciones_rdr.php').replace(
-            queryParameters: {'action': 'listar', 'limit': '$limit'},
-          ),
+          Uri.parse(
+            '$baseUrl/notificaciones_rdr.php',
+          ).replace(queryParameters: {'action': 'listar', 'limit': '$limit'}),
           headers: _headers(token),
         )
         .timeout(const Duration(seconds: 15));
@@ -76,9 +77,7 @@ class RdrNotificacionesService {
       noLeidas: int.tryParse('${body['no_leidas'] ?? 0}') ?? 0,
       notificaciones: raw
           .whereType<Map>()
-          .map((e) => RdrNotificacion.fromJson(
-                Map<String, dynamic>.from(e),
-              ))
+          .map((e) => RdrNotificacion.fromJson(Map<String, dynamic>.from(e)))
           .toList(),
     );
   }
@@ -86,8 +85,9 @@ class RdrNotificacionesService {
   Future<void> marcarLeida(String token, int id) async {
     final response = await http
         .post(
-          Uri.parse('$baseUrl/notificaciones_rdr.php')
-              .replace(queryParameters: {'action': 'leer'}),
+          Uri.parse(
+            '$baseUrl/notificaciones_rdr.php',
+          ).replace(queryParameters: {'action': 'leer'}),
           headers: _headers(token),
           body: jsonEncode({'id': id}),
         )
@@ -98,8 +98,9 @@ class RdrNotificacionesService {
   Future<void> marcarTodasLeidas(String token) async {
     final response = await http
         .post(
-          Uri.parse('$baseUrl/notificaciones_rdr.php')
-              .replace(queryParameters: {'action': 'leer_todas'}),
+          Uri.parse(
+            '$baseUrl/notificaciones_rdr.php',
+          ).replace(queryParameters: {'action': 'leer_todas'}),
           headers: _headers(token),
           body: '{}',
         )

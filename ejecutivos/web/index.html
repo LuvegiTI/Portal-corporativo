@@ -1,46 +1,99 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
 
-  <!-- iOS meta tags & icons -->
+  <title>LUVEGI | Contacto Directo</title>
+  <meta name="description" content="Tarjeta de contacto de los ejecutivos de LUVEGI. Comunicación directa por WhatsApp, sitio web y redes sociales.">
+  <meta name="author" content="LUVEGI">
+
+  <link rel="canonical" href="/">
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="apple-touch-icon" href="icons/Icon-180.png">
+
+  <meta property="og:type" content="profile">
+  <meta property="og:site_name" content="LUVEGI">
+  <meta property="og:locale" content="es_PE">
+  <meta property="og:title" content="LUVEGI | Contacto Directo">
+  <meta property="og:description" content="Tarjeta de contacto de los ejecutivos de LUVEGI. Contacto directo por WhatsApp.">
+  <meta property="og:image" content="https://contacto.luvegi.com/og-luvegi.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="LUVEGI | Contacto Directo">
+  <meta name="twitter:description" content="Tarjeta de contacto de los ejecutivos de LUVEGI. Contacto directo por WhatsApp.">
+  <meta name="twitter:image" content="https://contacto.luvegi.com/og-luvegi.jpg">
+
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="ejecutivos">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <meta name="apple-mobile-web-app-title" content="LUVEGI">
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
-
-  <title>ejecutivos</title>
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
-
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
   <script src="flutter_bootstrap.js" async></script>
+
+  <script>
+    // Ajusta el preview de WhatsApp/Facebook/LinkedIn segun el ejecutivo de la URL
+    // (/01, /02, ...). Si anades un ejecutivo en lib/main.dart, agregalo tambien aqui.
+    // CONTIGUA_SITIO = origen donde se publica el build (el mismo de og:image).
+    var LUVEGI_EJECUTIVOS = {
+      "01": ["Hugo Torres", "Jefe Comercial"],
+      "02": ["Angela Vargas", "Ejecutiva Comercial"],
+      "03": ["Rafael Bolivar", "Ejecutivo Comercial"],
+      "04": ["Rocio Salinas", "Ejecutiva Comercial"],
+      "05": ["Jimmy Sánchez", "Ejecutivo Comercial"],
+      "06": ["Enrique Neira", "Ejecutivo Comercial"],
+      "07": ["Julio Huarez", "Ejecutivo Comercial"],
+      "08": ["Valeria Ojeda", "Ejecutiva Comercial"],
+      "09": ["Renzo Gonzalez", "Ejecutivo Comercial"],
+      "10": ["Luis Hurtado", "Gerente Comercial"],
+      "11": ["Issaya Chavez", "Ejecutiva Comercial"],
+      "12": ["Oscar Ernau", "Ejecutivo Comercial"],
+      "13": ["Luis Giusti", "Gerente de Desarrollo y Estrategia de Negocio"],
+      "14": ["Diego Casariego", "Ejecutivo de Negocios Renta"],
+      "15": ["Luis Cespedes", "Jefe Comercial de Renta"],
+      "16": ["Jose Ramos", "Ejecutivo Postventa"],
+      "18": ["Sergio Alvarez", "Sub Gerente de Proyectos"],
+      "19": ["Jhonatan Torres", "Jefe Comercial de Servicios"]
+    };
+
+    (function () {
+      var partes = location.pathname.split('/').filter(function (p) {
+        return LUVEGI_EJECUTIVOS[p] !== undefined;
+      });
+      var clave = partes.length ? partes[partes.length - 1] : null;
+      if (!clave) return;
+
+      var ej = LUVEGI_EJECUTIVOS[clave];
+      var titulo = ej[0] + " - " + ej[1];
+      var desc = "Contacto directo de " + ej[0] + ", " + ej[1] +
+        " en LUVEGI. Escribele por WhatsApp o visita nuestro sitio web.";
+
+      document.title = titulo + " | LUVEGI";
+
+      var tags = {
+        "description": desc,
+        "og:title": titulo,
+        "og:description": desc,
+        "og:url": location.origin + location.pathname,
+        "twitter:title": titulo,
+        "twitter:description": desc
+      };
+
+      for (var k in tags) {
+        var attr = k.indexOf("og:") === 0 ? "property" : "name";
+        var el = document.querySelector('meta[' + attr + '="' + k + '"]');
+        if (el) el.setAttribute("content", tags[k]);
+      }
+
+      var canon = document.querySelector('link[rel="canonical"]');
+      if (canon) canon.setAttribute("href", location.origin + location.pathname);
+    })();
+  </script>
 </body>
 </html>

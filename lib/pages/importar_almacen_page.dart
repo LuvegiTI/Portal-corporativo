@@ -8,6 +8,7 @@ import '../design_system/luvegi_button.dart';
 import '../design_system/luvegi_card.dart';
 import '../design_system/luvegi_text_field.dart';
 import '../services/importar_almacen_service.dart';
+import '../services/auditoria_service.dart';
 import '../theme/luvegi_colors.dart';
 import '../theme/luvegi_radius.dart';
 import '../theme/luvegi_spacing.dart';
@@ -16,19 +17,16 @@ import '../theme/luvegi_text.dart';
 class ImportarAlmacenPage extends StatefulWidget {
   final String token;
 
-  const ImportarAlmacenPage({
-    super.key,
-    required this.token,
-  });
+  const ImportarAlmacenPage({super.key, required this.token});
 
   @override
-  State<ImportarAlmacenPage> createState() =>
-      _ImportarAlmacenPageState();
+  State<ImportarAlmacenPage> createState() => _ImportarAlmacenPageState();
 }
 
 class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
   final TextEditingController _pickingCtrl = TextEditingController();
   final ImportarAlmacenService _service = ImportarAlmacenService();
+  final AuditoriaService _auditoria = AuditoriaService();
 
   bool _loading = false;
   String _archivoNombre = 'Ningún archivo seleccionado';
@@ -103,9 +101,7 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
         _estado = 'Excel cargado correctamente.';
       });
 
-      _mostrarMensaje(
-        'Excel cargado: ${lineas.length} líneas válidas',
-      );
+      _mostrarMensaje('Excel cargado: ${lineas.length} líneas válidas');
     } catch (e) {
       if (!mounted) return;
 
@@ -136,9 +132,7 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
     int col(String name) {
       final target = _normalizarHeader(name);
 
-      return headers.indexWhere(
-        (h) => _normalizarHeader(h) == target,
-      );
+      return headers.indexWhere((h) => _normalizarHeader(h) == target);
     }
 
     final cProducto = col('Código de Producto');
@@ -146,10 +140,7 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
     final cCuenta = col('Cuenta Analítica');
     final cPrecio = col('Precio Unitario');
 
-    if (cProducto == -1 ||
-        cCantidad == -1 ||
-        cCuenta == -1 ||
-        cPrecio == -1) {
+    if (cProducto == -1 || cCantidad == -1 || cCuenta == -1 || cPrecio == -1) {
       throw Exception(
         'El Excel debe tener las columnas: Código de Producto, Cantidad, Cuenta Analítica y Precio Unitario.',
       );
@@ -194,18 +185,12 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
     final picking = _pickingCtrl.text.trim();
 
     if (picking.isEmpty) {
-      _mostrarMensaje(
-        'Ingresa el nombre del picking o albarán.',
-        error: true,
-      );
+      _mostrarMensaje('Ingresa el nombre del picking o albarán.', error: true);
       return;
     }
 
     if (_lineas.isEmpty) {
-      _mostrarMensaje(
-        'Primero selecciona un Excel válido.',
-        error: true,
-      );
+      _mostrarMensaje('Primero selecciona un Excel válido.', error: true);
       return;
     }
 
@@ -233,6 +218,18 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
       _mostrarMensaje(
         'Importación exitosa. Líneas procesadas: ${res['procesadas']}',
       );
+
+      try {
+        _auditoria
+            .registrarActividad(
+              widget.token,
+              accion: 'IMPORTAR_ALMACEN',
+              entidad: 'almacen',
+              detalle:
+                  'picking=$picking procesadas=${res['procesadas']} errores=${res['errores_count']}',
+            )
+            .catchError((_) {});
+      } catch (_) {}
     } catch (e) {
       if (!mounted) return;
 
@@ -251,15 +248,11 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
     }
   }
 
-  void _mostrarMensaje(
-    String mensaje, {
-    bool error = false,
-  }) {
+  void _mostrarMensaje(String mensaje, {bool error = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(mensaje),
-        backgroundColor:
-            error ? LuvegiColors.error : LuvegiColors.secondary,
+        backgroundColor: error ? LuvegiColors.error : LuvegiColors.secondary,
       ),
     );
   }
@@ -271,8 +264,7 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
       return LuvegiColors.error;
     }
 
-    if (estado.contains('completada') ||
-        estado.contains('correctamente')) {
+    if (estado.contains('completada') || estado.contains('correctamente')) {
       return LuvegiColors.success;
     }
 
@@ -290,8 +282,7 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
       return Icons.error_outline_rounded;
     }
 
-    if (estado.contains('completada') ||
-        estado.contains('correctamente')) {
+    if (estado.contains('completada') || estado.contains('correctamente')) {
       return Icons.check_circle_outline_rounded;
     }
 
@@ -315,14 +306,10 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
 
     return Scaffold(
       backgroundColor: LuvegiColors.background,
-      appBar: AppBar(
-        title: const Text('Importador de Almacén'),
-      ),
+      appBar: AppBar(title: const Text('Importador de Almacén')),
       body: Center(
         child: SingleChildScrollView(
-          padding: EdgeInsets.all(
-            mobile ? LuvegiSpacing.md : LuvegiSpacing.lg,
-          ),
+          padding: EdgeInsets.all(mobile ? LuvegiSpacing.md : LuvegiSpacing.lg),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1100),
             child: Column(
@@ -330,10 +317,7 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
               children: [
                 _buildHeader(),
                 const SizedBox(height: LuvegiSpacing.lg),
-                if (mobile)
-                  _buildMobile()
-                else
-                  _buildDesktop(),
+                if (mobile) _buildMobile() else _buildDesktop(),
               ],
             ),
           ),
@@ -374,8 +358,7 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
                       text: 'Seleccionar archivo Excel',
                       icon: Icons.upload_file_rounded,
                       width: double.infinity,
-                      onPressed:
-                          _loading ? null : _seleccionarExcel,
+                      onPressed: _loading ? null : _seleccionarExcel,
                     ),
                     const SizedBox(height: LuvegiSpacing.md),
                     _buildFileSummary(),
@@ -399,9 +382,7 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
                 _buildSummary(),
                 const SizedBox(height: LuvegiSpacing.lg),
                 LuvegiButton.primary(
-                  text: _loading
-                      ? 'Importando...'
-                      : 'Importar a Odoo',
+                  text: _loading ? 'Importando...' : 'Importar a Odoo',
                   icon: Icons.rocket_launch_rounded,
                   loading: _loading,
                   width: double.infinity,
@@ -435,9 +416,7 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
           initiallyExpanded: _lineas.isEmpty,
           icon: Icons.upload_file_rounded,
           title: '2. Archivo Excel',
-          trailingText: _lineas.isEmpty
-              ? null
-              : '${_lineas.length} líneas',
+          trailingText: _lineas.isEmpty ? null : '${_lineas.length} líneas',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -447,8 +426,7 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
                 text: 'Seleccionar archivo Excel',
                 icon: Icons.upload_file_rounded,
                 width: double.infinity,
-                onPressed:
-                    _loading ? null : _seleccionarExcel,
+                onPressed: _loading ? null : _seleccionarExcel,
               ),
               const SizedBox(height: LuvegiSpacing.md),
               _buildFileSummary(),
@@ -466,9 +444,7 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
               _buildStatusCard(),
               const SizedBox(height: LuvegiSpacing.md),
               LuvegiButton.primary(
-                text: _loading
-                    ? 'Importando...'
-                    : 'Importar a Odoo',
+                text: _loading ? 'Importando...' : 'Importar a Odoo',
                 icon: Icons.rocket_launch_rounded,
                 loading: _loading,
                 width: double.infinity,
@@ -489,9 +465,7 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
           height: 46,
           decoration: BoxDecoration(
             color: LuvegiColors.menuHover,
-            borderRadius: BorderRadius.circular(
-              LuvegiRadius.md,
-            ),
+            borderRadius: BorderRadius.circular(LuvegiRadius.md),
           ),
           child: const Icon(
             Icons.warehouse_outlined,
@@ -506,9 +480,7 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
             children: [
               Text(
                 'Importador de Almacén',
-                style: LuvegiText.title.copyWith(
-                  fontSize: 20,
-                ),
+                style: LuvegiText.title.copyWith(fontSize: 20),
               ),
               const SizedBox(height: LuvegiSpacing.xs),
               Text(
@@ -528,12 +500,8 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
       padding: const EdgeInsets.all(LuvegiSpacing.md),
       decoration: BoxDecoration(
         color: LuvegiColors.menuHover,
-        borderRadius: BorderRadius.circular(
-          LuvegiRadius.sm,
-        ),
-        border: Border.all(
-          color: LuvegiColors.border,
-        ),
+        borderRadius: BorderRadius.circular(LuvegiRadius.sm),
+        border: Border.all(color: LuvegiColors.border),
       ),
       child: Text(
         'Columnas requeridas: Código de Producto, Cantidad, Cuenta Analítica y Precio Unitario.',
@@ -546,20 +514,17 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
   }
 
   Widget _buildFileSummary() {
-    final bool hasFile =
-        _archivoNombre != 'Ningún archivo seleccionado';
+    final bool hasFile = _archivoNombre != 'Ningún archivo seleccionado';
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(LuvegiSpacing.md),
       decoration: BoxDecoration(
         color: LuvegiColors.surface,
-        borderRadius: BorderRadius.circular(
-          LuvegiRadius.sm,
-        ),
+        borderRadius: BorderRadius.circular(LuvegiRadius.sm),
         border: Border.all(
           color: hasFile
-              ? LuvegiColors.secondary.withOpacity(0.35)
+              ? LuvegiColors.secondary.withValues(alpha: 0.35)
               : LuvegiColors.border,
         ),
       ),
@@ -569,9 +534,7 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
             hasFile
                 ? Icons.insert_drive_file_rounded
                 : Icons.folder_open_rounded,
-            color: hasFile
-                ? LuvegiColors.secondary
-                : LuvegiColors.textHint,
+            color: hasFile ? LuvegiColors.secondary : LuvegiColors.textHint,
           ),
           const SizedBox(width: LuvegiSpacing.sm),
           Expanded(
@@ -582,9 +545,7 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
                   _archivoNombre,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: LuvegiText.body.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: LuvegiText.body.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -605,12 +566,8 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
       padding: const EdgeInsets.all(LuvegiSpacing.md),
       decoration: BoxDecoration(
         color: LuvegiColors.surfaceHover,
-        borderRadius: BorderRadius.circular(
-          LuvegiRadius.sm,
-        ),
-        border: Border.all(
-          color: LuvegiColors.border,
-        ),
+        borderRadius: BorderRadius.circular(LuvegiRadius.sm),
+        border: Border.all(color: LuvegiColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -622,15 +579,9 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
                 : _pickingCtrl.text.trim(),
           ),
           const SizedBox(height: LuvegiSpacing.sm),
-          _SummaryRow(
-            label: 'Archivo',
-            value: _archivoNombre,
-          ),
+          _SummaryRow(label: 'Archivo', value: _archivoNombre),
           const SizedBox(height: LuvegiSpacing.sm),
-          _SummaryRow(
-            label: 'Líneas',
-            value: '${_lineas.length}',
-          ),
+          _SummaryRow(label: 'Líneas', value: '${_lineas.length}'),
         ],
       ),
     );
@@ -641,22 +592,14 @@ class _ImportarAlmacenPageState extends State<ImportarAlmacenPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(LuvegiSpacing.md),
       decoration: BoxDecoration(
-        color: _estadoColor.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(
-          LuvegiRadius.sm,
-        ),
-        border: Border.all(
-          color: _estadoColor.withOpacity(0.28),
-        ),
+        color: _estadoColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(LuvegiRadius.sm),
+        border: Border.all(color: _estadoColor.withValues(alpha: 0.28)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            _estadoIcon,
-            color: _estadoColor,
-            size: 22,
-          ),
+          Icon(_estadoIcon, color: _estadoColor, size: 22),
           const SizedBox(width: LuvegiSpacing.sm),
           Expanded(
             child: Text(
@@ -698,23 +641,15 @@ class _CompactSection extends StatelessWidget {
                 height: 34,
                 decoration: BoxDecoration(
                   color: LuvegiColors.menuHover,
-                  borderRadius: BorderRadius.circular(
-                    LuvegiRadius.sm,
-                  ),
+                  borderRadius: BorderRadius.circular(LuvegiRadius.sm),
                 ),
-                child: Icon(
-                  icon,
-                  color: LuvegiColors.secondary,
-                  size: 19,
-                ),
+                child: Icon(icon, color: LuvegiColors.secondary, size: 19),
               ),
               const SizedBox(width: LuvegiSpacing.sm),
               Expanded(
                 child: Text(
                   title,
-                  style: LuvegiText.title.copyWith(
-                    fontSize: 16,
-                  ),
+                  style: LuvegiText.title.copyWith(fontSize: 16),
                 ),
               ),
             ],
@@ -747,9 +682,7 @@ class _CompactExpansionSection extends StatelessWidget {
     return LuvegiCard(
       padding: EdgeInsets.zero,
       child: Theme(
-        data: Theme.of(context).copyWith(
-          dividerColor: Colors.transparent,
-        ),
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           initiallyExpanded: initiallyExpanded,
           tilePadding: const EdgeInsets.symmetric(
@@ -762,22 +695,11 @@ class _CompactExpansionSection extends StatelessWidget {
             LuvegiSpacing.md,
             LuvegiSpacing.md,
           ),
-          leading: Icon(
-            icon,
-            color: LuvegiColors.secondary,
-          ),
-          title: Text(
-            title,
-            style: LuvegiText.title.copyWith(
-              fontSize: 15,
-            ),
-          ),
+          leading: Icon(icon, color: LuvegiColors.secondary),
+          title: Text(title, style: LuvegiText.title.copyWith(fontSize: 15)),
           subtitle: trailingText == null
               ? null
-              : Text(
-                  trailingText!,
-                  style: LuvegiText.caption,
-                ),
+              : Text(trailingText!, style: LuvegiText.caption),
           children: [child],
         ),
       ),
@@ -789,10 +711,7 @@ class _SummaryRow extends StatelessWidget {
   final String label;
   final String value;
 
-  const _SummaryRow({
-    required this.label,
-    required this.value,
-  });
+  const _SummaryRow({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -802,9 +721,7 @@ class _SummaryRow extends StatelessWidget {
           width: 72,
           child: Text(
             label,
-            style: LuvegiText.caption.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+            style: LuvegiText.caption.copyWith(fontWeight: FontWeight.w700),
           ),
         ),
         const SizedBox(width: LuvegiSpacing.sm),
@@ -813,9 +730,7 @@ class _SummaryRow extends StatelessWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: LuvegiText.body.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+            style: LuvegiText.body.copyWith(fontWeight: FontWeight.w600),
           ),
         ),
       ],

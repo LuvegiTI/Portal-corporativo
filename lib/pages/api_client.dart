@@ -58,7 +58,7 @@ class ApiClient {
     _sessionTimer?.cancel();
 
     _sessionTimer = Timer.periodic(
-      const Duration(seconds: 3),
+      const Duration(seconds: 15),
       (_) => _checkSession(),
     );
   }
@@ -67,29 +67,46 @@ class ApiClient {
   // 🔎 LLAMADA A check_session.php
   // =========================================================
   Future<void> _checkSession() async {
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
-    if (token == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+      if (token == null) return;
 
-    final response = await dio.get('mis_permisos.php');
+      final response = await dio.get('mis_permisos.php');
 
-    // Si el usuario está inactivo o hay error, forzar logout
-    if (response.data['ok'] != true) {
-      await _forzarLogout();
-    }
-  } catch (e) {
-    if (e is DioException && e.response?.statusCode == 400) {
-      await _forzarLogout();
+      if (response.data['ok'] == true) {
+        // Expiración deslizante: el servidor renueva el token si está por vencer
+        final tokenNuevo = response.data['token'];
+        if (tokenNuevo is String && tokenNuevo.isNotEmpty) {
+          await prefs.setString('token', tokenNuevo);
+        }
+
+        final permisosNuevos =
+            (response.data['permisos'] as List?)?.cast<String>();
+        if (permisosNuevos != null) {
+          await prefs.setStringList('permisos', permisosNuevos);
+        }
+        return;
+      }
+
+      // ok:false con 200/5xx = error del servidor. NO cerrar sesión.
+    } catch (e) {
+      // Solo el 401 significa sesión inválida. Un 500 (BD lenta o caída)
+      // es transitorio y no debe expulsar al usuario.
+      if (e is DioException && e.response?.statusCode == 401) {
+        await _forzarLogout();
+      }
     }
   }
-}
 
   // =========================================================
   // 🚨 FORZAR LOGOUT GLOBAL
   // =========================================================
+  Future<void> forzarLogoutGlobal() => _forzarLogout();
+
   Future<void> _forzarLogout() async {
     if (_logoutInProgress) return;
+
     _logoutInProgress = true;
 
     _sessionTimer?.cancel();

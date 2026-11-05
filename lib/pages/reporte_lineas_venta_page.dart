@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../design_system/luvegi_button.dart';
 import '../design_system/luvegi_card.dart';
+import '../design_system/luvegi_loading.dart';
 import '../models/reporte_linea_venta.dart';
 import '../services/reporte_lineas_venta_service.dart';
 import '../theme/luvegi_colors.dart';
@@ -23,11 +24,11 @@ class ReporteLineasVentaPage extends StatefulWidget {
   });
 
   @override
-  State<ReporteLineasVentaPage> createState() =>
-      _ReporteLineasVentaPageState();
+  State<ReporteLineasVentaPage> createState() => _ReporteLineasVentaPageState();
 }
 
-class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
+class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage>
+    with LuvegiProgresoMixin {
   final ReporteLineasVentaService _service = ReporteLineasVentaService();
 
   DateTime? fechaInicio;
@@ -63,6 +64,12 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
     final hoy = DateTime.now();
     fechaInicio = DateTime(hoy.year, hoy.month, 1);
     fechaFin = hoy;
+  }
+
+  @override
+  void dispose() {
+    cancelarProgresoTimer();
+    super.dispose();
   }
 
   List<ReporteLineaVenta> _aplicarFiltroPendientes(
@@ -129,6 +136,8 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
       filas = [];
     });
 
+    iniciarProgreso();
+
     try {
       final res = await _service.buscar(
         token: widget.token,
@@ -164,6 +173,7 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
       });
     } finally {
       if (!mounted) return;
+      detenerProgreso();
       setState(() => cargando = false);
     }
   }
@@ -198,13 +208,11 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
       'https://portal.luvegi.com/api_luvegi/exportar_reporte_lineas_venta.php'
       '?fecha_inicio=$fi'
       '&fecha_fin=$ff'
-      '&pendientes_entrega=$pendientes',
+      '&pendientes_entrega=$pendientes'
+      '&token=${widget.token}',
     );
 
-    await launchUrl(
-      url,
-      mode: LaunchMode.externalApplication,
-    );
+    await launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
   String fechaLabel(DateTime? fecha) {
@@ -212,10 +220,7 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
     return formatterVista.format(fecha);
   }
 
-  Widget celda(
-    String texto, {
-    TextAlign align = TextAlign.left,
-  }) {
+  Widget celda(String texto, {TextAlign align = TextAlign.left}) {
     return Tooltip(
       message: texto,
       waitDuration: const Duration(milliseconds: 700),
@@ -232,10 +237,7 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
     );
   }
 
-  DataColumn columna(
-    String texto, {
-    double width = 140,
-  }) {
+  DataColumn columna(String texto, {double width = 140}) {
     return DataColumn2(
       fixedWidth: width,
       label: Text(
@@ -253,15 +255,9 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
   Widget _tabla() {
     return ScrollbarTheme(
       data: ScrollbarThemeData(
-        thumbColor: WidgetStateProperty.all(
-          LuvegiColors.secondary,
-        ),
-        trackColor: WidgetStateProperty.all(
-          LuvegiColors.border,
-        ),
-        trackBorderColor: WidgetStateProperty.all(
-          Colors.transparent,
-        ),
+        thumbColor: WidgetStateProperty.all(LuvegiColors.secondary),
+        trackColor: WidgetStateProperty.all(LuvegiColors.border),
+        trackBorderColor: WidgetStateProperty.all(Colors.transparent),
         radius: const Radius.circular(10),
         thickness: WidgetStateProperty.all(12),
         thumbVisibility: WidgetStateProperty.all(true),
@@ -274,9 +270,7 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
         dataRowHeight: 52,
         columnSpacing: 10,
         horizontalMargin: 12,
-        headingRowColor: WidgetStateProperty.all(
-          LuvegiColors.menuHover,
-        ),
+        headingRowColor: WidgetStateProperty.all(LuvegiColors.menuHover),
         dataRowColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.hovered)) {
             return LuvegiColors.surfaceHover;
@@ -284,10 +278,7 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
 
           return LuvegiColors.surface;
         }),
-        border: TableBorder.all(
-          color: LuvegiColors.border,
-          width: 1,
-        ),
+        border: TableBorder.all(color: LuvegiColors.border, width: 1),
         columns: [
           columna('Concepto', width: 115),
           columna('Número de orden de venta', width: 155),
@@ -349,8 +340,7 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
         _InfoChip('Página', '$page / $totalPages'),
         _InfoChip('Líneas', '$returned'),
         _InfoChip('Tiempo', '${elapsed}s'),
-        if (soloPendientesEntrega)
-          const _InfoChip('Filtro', 'Pendientes'),
+        if (soloPendientesEntrega) const _InfoChip('Filtro', 'Pendientes'),
         const Spacer(),
         _PaginationButton(
           tooltip: 'Primera página',
@@ -416,16 +406,12 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
           text: cargando ? 'Buscando...' : 'Buscar',
           icon: Icons.search_rounded,
           loading: cargando,
-          onPressed: cargando
-              ? null
-              : () => buscar(nuevaPagina: 1),
+          onPressed: cargando ? null : () => buscar(nuevaPagina: 1),
         ),
         LuvegiButton.secondary(
           text: 'Exportar Excel',
           icon: Icons.download_rounded,
-          onPressed: cargando || !puedeExportar
-              ? null
-              : exportarExcel,
+          onPressed: cargando || !puedeExportar ? null : exportarExcel,
         ),
       ],
     );
@@ -440,9 +426,7 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
     return LuvegiCard(
       padding: EdgeInsets.zero,
       child: Theme(
-        data: Theme.of(context).copyWith(
-          dividerColor: Colors.transparent,
-        ),
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           initiallyExpanded: true,
           tilePadding: const EdgeInsets.symmetric(
@@ -461,9 +445,7 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
           ),
           title: Text(
             'Filtros',
-            style: LuvegiText.title.copyWith(
-              fontSize: 15,
-            ),
+            style: LuvegiText.title.copyWith(fontSize: 15),
           ),
           children: [content],
         ),
@@ -479,9 +461,7 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
           height: 46,
           decoration: BoxDecoration(
             color: LuvegiColors.menuHover,
-            borderRadius: BorderRadius.circular(
-              LuvegiRadius.md,
-            ),
+            borderRadius: BorderRadius.circular(LuvegiRadius.md),
           ),
           child: const Icon(
             Icons.receipt_long_rounded,
@@ -496,9 +476,7 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
             children: [
               Text(
                 'Reporte por líneas de venta',
-                style: LuvegiText.title.copyWith(
-                  fontSize: 20,
-                ),
+                style: LuvegiText.title.copyWith(fontSize: 20),
               ),
               const SizedBox(height: LuvegiSpacing.xs),
               Text(
@@ -517,20 +495,13 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(LuvegiSpacing.md),
       decoration: BoxDecoration(
-        color: LuvegiColors.error.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(
-          LuvegiRadius.sm,
-        ),
-        border: Border.all(
-          color: LuvegiColors.error.withOpacity(0.35),
-        ),
+        color: LuvegiColors.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(LuvegiRadius.sm),
+        border: Border.all(color: LuvegiColors.error.withValues(alpha: 0.35)),
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.error_outline_rounded,
-            color: LuvegiColors.error,
-          ),
+          const Icon(Icons.error_outline_rounded, color: LuvegiColors.error),
           const SizedBox(width: LuvegiSpacing.sm),
           Expanded(
             child: Text(
@@ -553,7 +524,7 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
 
     return Center(
       child: LuvegiCard(
-        width: 430,
+        maxWidth: 430,
         padding: const EdgeInsets.all(LuvegiSpacing.xl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -588,7 +559,7 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
             child: Padding(
               padding: const EdgeInsets.all(LuvegiSpacing.md),
               child: LuvegiCard(
-                width: 420,
+                maxWidth: 420,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -617,9 +588,7 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
     return Scaffold(
       backgroundColor: LuvegiColors.background,
       body: SafeArea(
-        child: compacto
-            ? _buildMobileLayout()
-            : _buildDesktopLayout(),
+        child: compacto ? _buildMobileLayout() : _buildDesktopLayout(),
       ),
     );
   }
@@ -646,9 +615,7 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
 
           const SizedBox(height: LuvegiSpacing.md),
 
-          Expanded(
-            child: _buildResultsBody(),
-          ),
+          Expanded(child: _buildResultsBody()),
         ],
       ),
     );
@@ -698,7 +665,7 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
 
             SizedBox(
               height: filas.isEmpty ? 300 : 540,
-              child: _buildResultsBody(),
+              child: _buildResultsBody(tarjetas: true),
             ),
 
             if (filas.isNotEmpty) ...[
@@ -713,25 +680,155 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
     );
   }
 
-  Widget _buildResultsBody() {
-    if (cargando) {
-      return const Center(
-        child: CircularProgressIndicator(
-          color: LuvegiColors.secondary,
+  Widget _filaInfoVenta(String label, Widget value) => Padding(
+    padding: const EdgeInsets.only(bottom: 4),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 118,
+          child: Text(
+            label,
+            style: LuvegiText.caption.copyWith(fontWeight: FontWeight.w700),
+          ),
         ),
-      );
+        Expanded(child: value),
+      ],
+    ),
+  );
+
+  Widget _tarjetasVenta() => ListView.separated(
+    padding: EdgeInsets.zero,
+    itemCount: filas.length,
+    separatorBuilder: (_, _) => const SizedBox(height: 10),
+    itemBuilder: (_, i) => _tarjetaVenta(filas[i]),
+  );
+
+  Widget _tarjetaVenta(ReporteLineaVenta r) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(LuvegiSpacing.md),
+      decoration: BoxDecoration(
+        color: LuvegiColors.surface,
+        borderRadius: BorderRadius.circular(LuvegiRadius.md),
+        border: Border.all(color: LuvegiColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  r.numeroOrdenVenta.isEmpty ? '—' : r.numeroOrdenVenta,
+                  style: LuvegiText.title.copyWith(
+                    fontSize: 16,
+                    color: LuvegiColors.secondary,
+                  ),
+                ),
+              ),
+              if (r.fechaConfirmacion.isNotEmpty)
+                Text(r.fechaConfirmacion, style: LuvegiText.caption),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            r.producto.isEmpty ? '—' : r.producto,
+            style: LuvegiText.body.copyWith(fontWeight: FontWeight.w600),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (r.concepto.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(r.concepto, style: LuvegiText.caption),
+          ],
+          const SizedBox(height: 8),
+          _filaInfoVenta(
+            'Cliente',
+            Text(
+              r.cliente.isEmpty ? '—' : r.cliente,
+              style: LuvegiText.body,
+            ),
+          ),
+          if (r.ruc.isNotEmpty)
+            _filaInfoVenta('RUC', Text(r.ruc, style: LuvegiText.body)),
+          if (r.ejecutivoLuvegi.isNotEmpty)
+            _filaInfoVenta(
+              'Ejecutivo',
+              Text(r.ejecutivoLuvegi, style: LuvegiText.body),
+            ),
+          if (r.unidadNegocio.isNotEmpty)
+            _filaInfoVenta(
+              'U. Negocio',
+              Text(r.unidadNegocio, style: LuvegiText.body),
+            ),
+          if (r.pedido.isNotEmpty)
+            _filaInfoVenta('Pedido', Text(r.pedido, style: LuvegiText.body)),
+          const SizedBox(height: 10),
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+          _filaInfoVenta(
+            'Cantidad',
+            Text(r.cantidad, style: LuvegiText.body),
+          ),
+          _filaInfoVenta(
+            'Entregada',
+            Text(r.cantidadEntregada, style: LuvegiText.body),
+          ),
+          _filaInfoVenta(
+            'Por entregar',
+            Text(r.cantidadPorEntregar, style: LuvegiText.body),
+          ),
+          _filaInfoVenta(
+            'Facturada',
+            Text(r.cantidadFacturada, style: LuvegiText.body),
+          ),
+          _filaInfoVenta(
+            'Precio unit.',
+            Text(r.precioUnitario, style: LuvegiText.body),
+          ),
+          if (r.descuentoPorcentaje.isNotEmpty)
+            _filaInfoVenta(
+              '% descuento',
+              Text(r.descuentoPorcentaje, style: LuvegiText.body),
+            ),
+          _filaInfoVenta(
+            'Total sin imp.',
+            Text(
+              '${r.moneda} ${r.precioTotalSinImp}',
+              style: LuvegiText.body.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+          _filaInfoVenta(
+            'Total con imp.',
+            Text(
+              '${r.moneda} ${r.precioTotalConImp}',
+              style: LuvegiText.body.copyWith(
+                fontWeight: FontWeight.w700,
+                color: LuvegiColors.secondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultsBody({bool tarjetas = false}) {
+    if (cargando) {
+      return buildProgreso();
     }
 
     if (filas.isEmpty) {
       return _buildEmptyState();
     }
 
+    if (tarjetas) return _tarjetasVenta();
+
     return LuvegiCard(
       padding: EdgeInsets.zero,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(
-          LuvegiRadius.lg,
-        ),
+        borderRadius: BorderRadius.circular(LuvegiRadius.lg),
         child: _tabla(),
       ),
     );
@@ -756,9 +853,7 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
               : () => buscar(nuevaPagina: page - 1),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: LuvegiSpacing.md,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: LuvegiSpacing.md),
           child: Text(
             '$page / $totalPages',
             style: LuvegiText.body.copyWith(
@@ -784,7 +879,6 @@ class _ReporteLineasVentaPageState extends State<ReporteLineasVentaPage> {
       ],
     );
   }
-
 }
 
 class _FechaBox extends StatelessWidget {
@@ -802,9 +896,7 @@ class _FechaBox extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(
-        LuvegiRadius.sm,
-      ),
+      borderRadius: BorderRadius.circular(LuvegiRadius.sm),
       child: Container(
         width: 170,
         padding: const EdgeInsets.symmetric(
@@ -813,20 +905,13 @@ class _FechaBox extends StatelessWidget {
         ),
         decoration: BoxDecoration(
           color: LuvegiColors.surface,
-          borderRadius: BorderRadius.circular(
-            LuvegiRadius.sm,
-          ),
-          border: Border.all(
-            color: LuvegiColors.border,
-          ),
+          borderRadius: BorderRadius.circular(LuvegiRadius.sm),
+          border: Border.all(color: LuvegiColors.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              titulo,
-              style: LuvegiText.caption,
-            ),
+            Text(titulo, style: LuvegiText.caption),
             const SizedBox(height: LuvegiSpacing.xs),
             Row(
               children: [
@@ -868,34 +953,21 @@ class _FilterChipBox extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: () => onChanged(!value),
-      borderRadius: BorderRadius.circular(
-        LuvegiRadius.sm,
-      ),
+      borderRadius: BorderRadius.circular(LuvegiRadius.sm),
       child: Container(
         height: 58,
-        padding: const EdgeInsets.symmetric(
-          horizontal: LuvegiSpacing.md,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: LuvegiSpacing.md),
         decoration: BoxDecoration(
-          color: value
-              ? LuvegiColors.menuHover
-              : LuvegiColors.surface,
-          borderRadius: BorderRadius.circular(
-            LuvegiRadius.sm,
-          ),
+          color: value ? LuvegiColors.menuHover : LuvegiColors.surface,
+          borderRadius: BorderRadius.circular(LuvegiRadius.sm),
           border: Border.all(
-            color: value
-                ? LuvegiColors.menuSelected
-                : LuvegiColors.border,
+            color: value ? LuvegiColors.menuSelected : LuvegiColors.border,
           ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Checkbox(
-              value: value,
-              onChanged: (v) => onChanged(v ?? false),
-            ),
+            Checkbox(value: value, onChanged: (v) => onChanged(v ?? false)),
             Text(
               label,
               style: LuvegiText.body.copyWith(
@@ -921,21 +993,15 @@ class _InfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(
-        right: LuvegiSpacing.sm,
-      ),
+      margin: const EdgeInsets.only(right: LuvegiSpacing.sm),
       padding: const EdgeInsets.symmetric(
         horizontal: LuvegiSpacing.md,
         vertical: LuvegiSpacing.sm,
       ),
       decoration: BoxDecoration(
         color: LuvegiColors.surface,
-        borderRadius: BorderRadius.circular(
-          LuvegiRadius.xl,
-        ),
-        border: Border.all(
-          color: LuvegiColors.border,
-        ),
+        borderRadius: BorderRadius.circular(LuvegiRadius.xl),
+        border: Border.all(color: LuvegiColors.border),
       ),
       child: Text(
         '$label: $value',
@@ -969,9 +1035,7 @@ class _PaginationButton extends StatelessWidget {
       disabledColor: LuvegiColors.textHint,
       style: IconButton.styleFrom(
         backgroundColor: LuvegiColors.surface,
-        side: const BorderSide(
-          color: LuvegiColors.border,
-        ),
+        side: const BorderSide(color: LuvegiColors.border),
       ),
     );
   }

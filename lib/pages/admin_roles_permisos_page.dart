@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/admin_roles_permisos_service.dart';
 import '../services/auth_service.dart';
+import '../services/auditoria_service.dart';
+import '../utils/mensaje_error.dart';
+
 class AdminRolesPermisosPage extends StatefulWidget {
   final String token;
   const AdminRolesPermisosPage({super.key, required this.token});
@@ -11,31 +14,29 @@ class AdminRolesPermisosPage extends StatefulWidget {
 
 class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
   final _service = AdminRolesPermisosService();
+  final AuditoriaService _auditoria = AuditoriaService();
 
   List<Map<String, dynamic>> _usuarios = [];
   List<Map<String, dynamic>> _permisos = [];
   int? _usuarioId;
   int? _usuarioBaseId;
   final Map<int, bool> _checks = {};
-  Map<int, bool> _checksGuardados = {}; // snapshot del último guardado/carga
+  Map<int, bool> _checksGuardados = {};
   bool _loading = true;
   bool _saving = false;
-  bool _savedOk = false; // para animar el botón de guardado
+  bool _savedOk = false;
 
-  // ─── Paleta "Facherito White" ─────────────────────────────────────────────
   final Color _primaryBlue = const Color(0xFF003366);
   final Color _bgPureWhite = Colors.white;
-  final Color _inputGray   = const Color(0xFFFBFBFB);
-  final Color _textDeep    = const Color(0xFF0F172A);
-  final Color _textLight   = const Color(0xFF64748B);
+  final Color _inputGray = const Color(0xFFFBFBFB);
+  final Color _textDeep = const Color(0xFF0F172A);
+  final Color _textLight = const Color(0xFF64748B);
 
-  // ─── Guard: cambios pendientes ────────────────────────────────────────────
   bool get _hayPendientes =>
       _checks.entries.any((e) => _checksGuardados[e.key] != e.value);
 
   void _snapshotGuardado() => _checksGuardados = Map.from(_checks);
 
-  // ─── Lifecycle ────────────────────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
@@ -52,7 +53,9 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
       setState(() {
         _usuarios = uData;
         _permisos = pData;
-        for (var p in _permisos) { _checks[p['id']] = false; }
+        for (var p in _permisos) {
+          _checks[p['id']] = false;
+        }
         if (_usuarios.isNotEmpty) _usuarioId = _usuarios.first['id'];
       });
 
@@ -70,8 +73,9 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
     try {
       final activos = await _service.permisosPorUsuario(widget.token, id);
       setState(() {
-        for (var key in _checks.keys) { _checks[key] = activos.contains(key); }
-        // Solo reseteamos el snapshot cuando es una carga real (no una copia)
+        for (var key in _checks.keys) {
+          _checks[key] = activos.contains(key);
+        }
         if (!esCopia) _snapshotGuardado();
       });
     } catch (e) {
@@ -79,36 +83,59 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
     }
   }
 
-  // ─── Guardar con animación de éxito ──────────────────────────────────────
   Future<void> _guardar() async {
     if (_usuarioId == null) return;
-    
-    // Obtenemos la lista de IDs seleccionados
-    final seleccionados =
-        _checks.entries.where((e) => e.value).map((e) => e.key).toList();
 
-    // DEBUG: Revisa esto en tu terminal de VS Code / Android Studio
+    final seleccionados = _checks.entries
+        .where((e) => e.value)
+        .map((e) => e.key)
+        .toList();
+
     debugPrint('*** ENVIANDO A BACKEND ***');
     debugPrint('Usuario ID: $_usuarioId');
     debugPrint('Permisos IDs: $seleccionados');
 
-    setState(() { _saving = true; _savedOk = false; });
+    setState(() {
+      _saving = true;
+      _savedOk = false;
+    });
 
     try {
-      final ok = await _service.guardar(widget.token, _usuarioId!, seleccionados);
-      
-     if (ok) {
-    debugPrint('Servidor respondió: OK');
-   _snapshotGuardado();
+      final ok = await _service.guardar(
+        widget.token,
+        _usuarioId!,
+        seleccionados,
+      );
 
-    // Refresco instantáneo si me estoy editando a mí mismo
-   final session = await AuthService().getSession();
-    if (session != null && session['usuarioId'].toString() == _usuarioId.toString()) {
-    await AuthService().refrescarMisPermisos();
-   }
+      if (ok) {
+        debugPrint('Servidor respondió: OK');
+        _snapshotGuardado();
 
-  setState(() => _savedOk = true);
-        // El botón muestra "¡LISTO!" durante 2 segundos y luego vuelve al normal
+        try {
+          final usuarioLog =
+              _usuarios
+                  .where((u) => u['id'] == _usuarioId)
+                  .map((u) => u['usuario'].toString())
+                  .firstOrNull ??
+              '$_usuarioId';
+          _auditoria
+              .registrarActividad(
+                widget.token,
+                accion: 'EDITAR_PERMISOS_USUARIO',
+                entidad: 'usuario',
+                detalle:
+                    'usuario_id=$_usuarioId ($usuarioLog) permisos_ids=${seleccionados.join(',')}',
+              )
+              .catchError((_) {});
+        } catch (_) {}
+
+        final session = await AuthService().getSession();
+        if (session != null &&
+            session['usuarioId'].toString() == _usuarioId.toString()) {
+          await AuthService().refrescarMisPermisos();
+        }
+
+        setState(() => _savedOk = true);
         await Future.delayed(const Duration(seconds: 2));
         if (mounted) setState(() => _savedOk = false);
       } else {
@@ -117,18 +144,18 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
       }
     } catch (e) {
       debugPrint('Error de red/excepción: $e');
-      _snack('❌ Error de conexión', isError: true);
+      _snack(MensajeError.desdeExcepcion(e), isError: true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  // ─── Cambio de usuario con guard de cambios pendientes ────────────────────
   Future<void> _cambiarUsuario(int nuevoId) async {
     if (_hayPendientes) {
       final descarta = await _showConfirmDialog(
         title: '¿Descartar cambios?',
-        body: 'Tienes permisos modificados sin guardar.\nSi continúas, se perderán.',
+        body:
+            'Tienes permisos modificados sin guardar.\nSi continúas, se perderán.',
         confirmLabel: 'DESCARTAR',
         confirmColor: Colors.redAccent,
       );
@@ -136,12 +163,11 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
     }
     setState(() {
       _usuarioId = nuevoId;
-      _usuarioBaseId = null; // limpiar clon al cambiar usuario
+      _usuarioBaseId = null;
     });
     await _cargarPermisosUsuario(nuevoId, esCopia: false);
   }
 
-  // ─── Clonar con diálogo de confirmación ──────────────────────────────────
   Future<void> _clonarDesde(int baseId) async {
     final usuario = _usuarios.firstWhere(
       (u) => u['id'] == baseId,
@@ -150,9 +176,10 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
 
     final confirma = await _showConfirmDialog(
       title: 'Clonar permisos',
-      body: 'Se reemplazarán los permisos actuales con los de '
-            '"${usuario['usuario'].toString().toUpperCase()}".\n\n'
-            'Los cambios no se guardan hasta que pulses GUARDAR.',
+      body:
+          'Se reemplazarán los permisos actuales con los de '
+          '"${usuario['usuario'].toString().toUpperCase()}".\n\n'
+          'Los cambios no se guardan hasta que pulses GUARDAR.',
       confirmLabel: 'CLONAR',
       confirmColor: Colors.amber.shade800,
     );
@@ -165,14 +192,14 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
     await _cargarPermisosUsuario(baseId, esCopia: true);
   }
 
-  // ─── Selección masiva por grupo ───────────────────────────────────────────
   void _toggleGrupo(List<Map<String, dynamic>> permisos, bool value) {
     setState(() {
-      for (var p in permisos) { _checks[p['id']] = value; }
+      for (var p in permisos) {
+        _checks[p['id']] = value;
+      }
     });
   }
 
-  // ─── Diálogo de confirmación genérico ────────────────────────────────────
   Future<bool?> _showConfirmDialog({
     required String title,
     required String body,
@@ -183,11 +210,11 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(title,
-            style: TextStyle(
-                color: _primaryBlue, fontWeight: FontWeight.w900)),
-        content: Text(body,
-            style: TextStyle(color: _textLight, height: 1.5)),
+        title: Text(
+          title,
+          style: TextStyle(color: _primaryBlue, fontWeight: FontWeight.w900),
+        ),
+        content: Text(body, style: TextStyle(color: _textLight, height: 1.5)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -199,7 +226,8 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
               backgroundColor: confirmColor,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
             child: Text(confirmLabel),
           ),
@@ -209,18 +237,22 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
   }
 
   void _snack(String msg, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg,
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          msg,
           style: const TextStyle(
-              color: Colors.white, fontWeight: FontWeight.bold)),
-      backgroundColor: isError ? Colors.redAccent : _primaryBlue,
-      behavior: SnackBarBehavior.floating,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-    ));
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        backgroundColor: isError ? Colors.redAccent : _primaryBlue,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
   }
 
-  // ─── Build principal ──────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final totalActivos = _checks.values.where((v) => v).length;
@@ -232,31 +264,31 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
         backgroundColor: _bgPureWhite,
         elevation: 0,
         centerTitle: true,
-        title: Text('GESTIÓN DE ACCESOS',
-            style: TextStyle(
-                color: _primaryBlue,
-                fontWeight: FontWeight.w900,
-                fontSize: 16,
-                letterSpacing: 1)),
+        title: Text(
+          'GESTIÓN DE ACCESOS',
+          style: TextStyle(
+            color: _primaryBlue,
+            fontWeight: FontWeight.w900,
+            fontSize: 16,
+            letterSpacing: 1,
+          ),
+        ),
         iconTheme: IconThemeData(color: _primaryBlue),
       ),
       body: _loading
           ? _buildSkeleton()
           : Column(
               children: [
-                // 1. Banner de cambios sin guardar
                 if (_hayPendientes) _buildPendingBanner(),
-                // 2. Header con dropdowns y botón
                 _buildControlHeader(),
-                // 3. Barra resumen de permisos totales
                 _buildResumenBar(totalActivos, total),
-                // 4. Lista de grupos
                 Expanded(
                   child: ListView(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 10),
-                    children: _getGrupos()
-                        .entries
+                      horizontal: 20,
+                      vertical: 10,
+                    ),
+                    children: _getGrupos().entries
                         .map((g) => _buildGroupCard(g))
                         .toList(),
                   ),
@@ -266,25 +298,26 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
     );
   }
 
-  // ─── Skeleton de carga ────────────────────────────────────────────────────
   Widget _buildSkeleton() {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _skeletonBox(height: 50),
-          const SizedBox(height: 10),
-          _skeletonBox(height: 42),
-          const SizedBox(height: 20),
-          ...List.generate(
-            4,
-            (_) => Padding(
-              padding: const EdgeInsets.only(bottom: 15),
-              child: _skeletonBox(height: 110),
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _skeletonBox(height: 50),
+            const SizedBox(height: 10),
+            _skeletonBox(height: 42),
+            const SizedBox(height: 20),
+            ...List.generate(
+              4,
+              (_) => Padding(
+                padding: const EdgeInsets.only(bottom: 15),
+                child: _skeletonBox(height: 110),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -300,7 +333,6 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
     );
   }
 
-  // ─── Banner de cambios pendientes ─────────────────────────────────────────
   Widget _buildPendingBanner() {
     return Container(
       width: double.infinity,
@@ -308,16 +340,20 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
       color: Colors.orange.shade50,
       child: Row(
         children: [
-          Icon(Icons.warning_amber_rounded,
-              color: Colors.orange.shade700, size: 18),
+          Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.orange.shade700,
+            size: 18,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               'Tienes cambios sin guardar',
               style: TextStyle(
-                  color: Colors.orange.shade800,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12),
+                color: Colors.orange.shade800,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
             ),
           ),
           TextButton(
@@ -325,7 +361,9 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
             style: TextButton.styleFrom(
               foregroundColor: Colors.orange.shade800,
               textStyle: const TextStyle(
-                  fontWeight: FontWeight.bold, fontSize: 12),
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
             ),
             child: const Text('GUARDAR AHORA'),
           ),
@@ -334,12 +372,11 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
     );
   }
 
-  // ─── Barra resumen global ─────────────────────────────────────────────────
   Widget _buildResumenBar(int activos, int total) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       decoration: BoxDecoration(
-        color: _primaryBlue.withOpacity(0.04),
+        color: _primaryBlue.withValues(alpha: 0.04),
         border: Border(
           top: BorderSide(color: Colors.grey.shade100),
           bottom: BorderSide(color: Colors.grey.shade100),
@@ -352,9 +389,10 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
           Text(
             '$activos de $total permisos activos',
             style: TextStyle(
-                color: _primaryBlue,
-                fontWeight: FontWeight.w700,
-                fontSize: 12),
+              color: _primaryBlue,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
           ),
           const Spacer(),
           SizedBox(
@@ -372,7 +410,6 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
     );
   }
 
-  // ─── Header de control ────────────────────────────────────────────────────
   Widget _buildControlHeader() {
     final bool existeId = _usuarios.any((u) => u['id'] == _usuarioId);
     return Container(
@@ -385,18 +422,19 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('CONFIGURACIÓN DE USUARIO',
-              style: TextStyle(
-                  color: _textLight,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold)),
+          Text(
+            'CONFIGURACIÓN DE USUARIO',
+            style: TextStyle(
+              color: _textLight,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 10),
           Row(
             children: [
-              // Campo buscador de usuario (abre modal al tocar)
               Expanded(child: _buildUserSearchField(existeId)),
               const SizedBox(width: 12),
-              // Botón GUARDAR con estados: normal / cargando / éxito / deshabilitado
               SizedBox(
                 height: 50,
                 child: ElevatedButton.icon(
@@ -406,23 +444,28 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
                       : Icon(
                           _savedOk
                               ? Icons.check_circle
                               : Icons.check_circle_outline,
-                          size: 18),
+                          size: 18,
+                        ),
                   label: Text(_savedOk ? '¡LISTO!' : 'GUARDAR'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                        _savedOk ? Colors.green.shade600 : _primaryBlue,
+                    backgroundColor: _savedOk
+                        ? Colors.green.shade600
+                        : _primaryBlue,
                     foregroundColor: Colors.white,
                     disabledBackgroundColor: Colors.grey.shade200,
                     disabledForegroundColor: Colors.grey.shade400,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
               ),
@@ -435,25 +478,27 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
     );
   }
 
-  // ─── Barra clonar ─────────────────────────────────────────────────────────
   Widget _buildCloneBar() {
     final bool existeBase = _usuarios.any((u) => u['id'] == _usuarioBaseId);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 2),
       decoration: BoxDecoration(
-        color: Colors.amber.withOpacity(0.05),
+        color: Colors.amber.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.amber.withOpacity(0.1)),
+        border: Border.all(color: Colors.amber.withValues(alpha: 0.1)),
       ),
       child: Row(
         children: [
           const Icon(Icons.copy_all_outlined, color: Colors.amber, size: 18),
           const SizedBox(width: 10),
-          Text('CLONAR:',
-              style: TextStyle(
-                  color: Colors.amber.shade900,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 11)),
+          Text(
+            'CLONAR:',
+            style: TextStyle(
+              color: Colors.amber.shade900,
+              fontWeight: FontWeight.bold,
+              fontSize: 11,
+            ),
+          ),
           const SizedBox(width: 10),
           Expanded(child: _buildCloneSearchField(existeBase)),
         ],
@@ -461,12 +506,10 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
     );
   }
 
-  // ─── Card de grupo con checkbox masivo y badge ────────────────────────────
-  Widget _buildGroupCard(
-      MapEntry<String, List<Map<String, dynamic>>> grupo) {
-    final permisos     = grupo.value;
+  Widget _buildGroupCard(MapEntry<String, List<Map<String, dynamic>>> grupo) {
+    final permisos = grupo.value;
     final activosGrupo = permisos.where((p) => _checks[p['id']] == true).length;
-    final totalGrupo   = permisos.length;
+    final totalGrupo = permisos.length;
     final todosActivos = activosGrupo == totalGrupo;
     final algunoActivo = activosGrupo > 0 && !todosActivos;
 
@@ -479,23 +522,23 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
           border: Border.all(color: Colors.grey.shade100),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.02),
-                blurRadius: 10,
-                offset: const Offset(0, 4))
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
           ],
         ),
-        child: Theme(
-          data:
-              Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: Material(
+          type: MaterialType.transparency,
+          child: Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
           child: ExpansionTile(
             initiallyExpanded: true,
             iconColor: _primaryBlue,
             title: Row(
               children: [
-                // Checkbox de selección masiva con estado tristate
                 Semantics(
-                  label:
-                      'Seleccionar todos los permisos de ${grupo.key}',
+                  label: 'Seleccionar todos los permisos de ${grupo.key}',
                   child: SizedBox(
                     width: 24,
                     height: 24,
@@ -506,47 +549,51 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
                       tristate: true,
                       activeColor: _primaryBlue,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4)),
-                      onChanged: (_) =>
-                          _toggleGrupo(permisos, !todosActivos),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      onChanged: (_) => _toggleGrupo(permisos, !todosActivos),
                     ),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(grupo.key,
-                      style: TextStyle(
-                          color: _primaryBlue,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 13)),
+                  child: Text(
+                    grupo.key,
+                    style: TextStyle(
+                      color: _primaryBlue,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13,
+                    ),
+                  ),
                 ),
-                // Badge contador por grupo
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 2),
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
-                    color: _primaryBlue.withOpacity(0.08),
+                    color: _primaryBlue.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     '$activosGrupo/$totalGrupo',
                     style: TextStyle(
-                        color: _primaryBlue,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold),
+                      color: _primaryBlue,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
             ),
-            children:
-                permisos.map((p) => _buildPermissionRow(p)).toList(),
+            children: permisos.map((p) => _buildPermissionRow(p)).toList(),
           ),
+        ),
         ),
       ),
     );
   }
 
-  // ─── Fila de permiso con Semantics ───────────────────────────────────────
   Widget _buildPermissionRow(Map<String, dynamic> p) {
     final bool selected = _checks[p['id']] ?? false;
     return Semantics(
@@ -555,25 +602,28 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
       child: InkWell(
         onTap: () => setState(() => _checks[p['id']] = !selected),
         child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           decoration: BoxDecoration(
-              border: Border(
-                  top: BorderSide(color: Colors.grey.shade50))),
+            border: Border(top: BorderSide(color: Colors.grey.shade50)),
+          ),
           child: Row(
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(p['codigo'],
-                        style: TextStyle(
-                            color: _textDeep,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13)),
-                    Text(p['descripcion'],
-                        style:
-                            TextStyle(color: _textLight, fontSize: 11)),
+                    Text(
+                      p['codigo'],
+                      style: TextStyle(
+                        color: _textDeep,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                    Text(
+                      p['descripcion'],
+                      style: TextStyle(color: _textLight, fontSize: 11),
+                    ),
                   ],
                 ),
               ),
@@ -583,7 +633,8 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
                   value: selected,
                   activeColor: _primaryBlue,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4)),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                   onChanged: (v) =>
                       setState(() => _checks[p['id']] = v ?? false),
                 ),
@@ -595,25 +646,22 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
     );
   }
 
-  // ─── Agrupación por módulo ────────────────────────────────────────────────
   Map<String, List<Map<String, dynamic>>> _getGrupos() {
     final Map<String, List<Map<String, dynamic>>> grupos = {};
     for (var p in _permisos) {
-      final String mod =
-          (p['modulo'] ?? 'OTROS').toString().toUpperCase();
+      final String mod = (p['modulo'] ?? 'OTROS').toString().toUpperCase();
       if (!grupos.containsKey(mod)) grupos[mod] = [];
       grupos[mod]!.add(p);
     }
     return grupos;
   }
 
-  // ─── Campo visual que abre el modal de búsqueda de usuario ───────────────
   Widget _buildUserSearchField(bool existeId) {
     final nombreActual = existeId
         ? _usuarios
-            .firstWhere((u) => u['id'] == _usuarioId)['usuario']
-            .toString()
-            .toUpperCase()
+              .firstWhere((u) => u['id'] == _usuarioId)['usuario']
+              .toString()
+              .toUpperCase()
         : 'Seleccionar usuario...';
     return GestureDetector(
       onTap: () => _abrirModalBusqueda(
@@ -640,28 +688,30 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
               child: Text(
                 nombreActual,
                 style: TextStyle(
-                    color: existeId ? _textDeep : _textLight,
-                    fontWeight:
-                        existeId ? FontWeight.bold : FontWeight.normal,
-                    fontSize: 13),
+                  color: existeId ? _textDeep : _textLight,
+                  fontWeight: existeId ? FontWeight.bold : FontWeight.normal,
+                  fontSize: 13,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            Icon(Icons.arrow_drop_down_circle_outlined,
-                color: _primaryBlue, size: 20),
+            Icon(
+              Icons.arrow_drop_down_circle_outlined,
+              color: _primaryBlue,
+              size: 20,
+            ),
           ],
         ),
       ),
     );
   }
 
-  // ─── Campo visual para clonar que abre el modal ───────────────────────────
   Widget _buildCloneSearchField(bool existeBase) {
     final nombreBase = existeBase
         ? _usuarios
-            .firstWhere((u) => u['id'] == _usuarioBaseId)['usuario']
-            .toString()
-            .toUpperCase()
+              .firstWhere((u) => u['id'] == _usuarioBaseId)['usuario']
+              .toString()
+              .toUpperCase()
         : null;
     return GestureDetector(
       onTap: () => _abrirModalBusqueda(
@@ -678,13 +728,14 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
             child: Text(
               nombreBase ?? 'Elegir origen...',
               style: TextStyle(
-                  color: nombreBase != null
-                      ? Colors.amber.shade900
-                      : Colors.amber.shade400,
-                  fontWeight: nombreBase != null
-                      ? FontWeight.bold
-                      : FontWeight.normal,
-                  fontSize: 13),
+                color: nombreBase != null
+                    ? Colors.amber.shade900
+                    : Colors.amber.shade400,
+                fontWeight: nombreBase != null
+                    ? FontWeight.bold
+                    : FontWeight.normal,
+                fontSize: 13,
+              ),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -694,7 +745,6 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
     );
   }
 
-  // ─── Modal genérico con buscador en tiempo real ───────────────────────────
   Future<void> _abrirModalBusqueda({
     required String titulo,
     required List<Map<String, dynamic>> usuarios,
@@ -722,7 +772,6 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
   }
 }
 
-// ─── Widget stateful del modal buscador ──────────────────────────────────────
 class _ModalBuscadorUsuario extends StatefulWidget {
   final String titulo;
   final List<Map<String, dynamic>> usuarios;
@@ -760,9 +809,8 @@ class _ModalBuscadorUsuarioState extends State<_ModalBuscadorUsuario> {
       _filtrados = q.isEmpty
           ? widget.usuarios
           : widget.usuarios
-              .where((u) =>
-                  u['usuario'].toString().toLowerCase().contains(q))
-              .toList();
+                .where((u) => u['usuario'].toString().toLowerCase().contains(q))
+                .toList();
     });
   }
 
@@ -776,7 +824,8 @@ class _ModalBuscadorUsuarioState extends State<_ModalBuscadorUsuario> {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom),
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: Container(
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.8,
@@ -798,25 +847,27 @@ class _ModalBuscadorUsuarioState extends State<_ModalBuscadorUsuario> {
               ),
             ),
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               child: Row(
                 children: [
-                  Icon(Icons.manage_accounts_outlined,
-                      color: widget.colorPrincipal, size: 20),
+                  Icon(
+                    Icons.manage_accounts_outlined,
+                    color: widget.colorPrincipal,
+                    size: 20,
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     widget.titulo,
                     style: TextStyle(
-                        color: widget.colorPrincipal,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 15),
+                      color: widget.colorPrincipal,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
+                    ),
                   ),
                   const Spacer(),
                   Text(
                     '${_filtrados.length} resultado${_filtrados.length != 1 ? 's' : ''}',
-                    style: TextStyle(
-                        color: Colors.grey.shade400, fontSize: 12),
+                    style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
                   ),
                 ],
               ),
@@ -830,20 +881,27 @@ class _ModalBuscadorUsuarioState extends State<_ModalBuscadorUsuario> {
                 decoration: InputDecoration(
                   hintText: 'Escribe para filtrar...',
                   hintStyle: TextStyle(
-                      color: Colors.grey.shade400, fontSize: 13),
-                  prefixIcon: Icon(Icons.search,
-                      color: widget.colorPrincipal, size: 20),
+                    color: Colors.grey.shade400,
+                    fontSize: 13,
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    color: widget.colorPrincipal,
+                    size: 20,
+                  ),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
-                          icon: Icon(Icons.clear,
-                              color: Colors.grey.shade400, size: 18),
+                          icon: Icon(
+                            Icons.clear,
+                            color: Colors.grey.shade400,
+                            size: 18,
+                          ),
                           onPressed: () => _searchController.clear(),
                         )
                       : null,
                   filled: true,
                   fillColor: Colors.grey.shade50,
-                  contentPadding:
-                      const EdgeInsets.symmetric(vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -851,8 +909,9 @@ class _ModalBuscadorUsuarioState extends State<_ModalBuscadorUsuario> {
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(
-                        color: widget.colorPrincipal.withOpacity(0.4),
-                        width: 1.5),
+                      color: widget.colorPrincipal.withValues(alpha: 0.4),
+                      width: 1.5,
+                    ),
                   ),
                 ),
               ),
@@ -864,47 +923,65 @@ class _ModalBuscadorUsuarioState extends State<_ModalBuscadorUsuario> {
                       padding: const EdgeInsets.all(32),
                       child: Column(
                         children: [
-                          Icon(Icons.search_off,
-                              size: 40, color: Colors.grey.shade300),
+                          Icon(
+                            Icons.search_off,
+                            size: 40,
+                            color: Colors.grey.shade300,
+                          ),
                           const SizedBox(height: 8),
-                          Text('Sin resultados',
-                              style: TextStyle(
-                                  color: Colors.grey.shade400,
-                                  fontSize: 13)),
+                          Text(
+                            'Sin resultados',
+                            style: TextStyle(
+                              color: Colors.grey.shade400,
+                              fontSize: 13,
+                            ),
+                          ),
                         ],
                       ),
                     )
                   : ListView.separated(
                       shrinkWrap: true,
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 4),
+                        horizontal: 16,
+                        vertical: 4,
+                      ),
                       itemCount: _filtrados.length,
                       separatorBuilder: (_, __) =>
                           Divider(height: 1, color: Colors.grey.shade100),
                       itemBuilder: (_, i) {
                         final u = _filtrados[i];
                         final nombre = u['usuario'].toString().toUpperCase();
-                        final query = _searchController.text.toUpperCase().trim();
-                        return ListTile(
-                          contentPadding:
-                              const EdgeInsets.symmetric(horizontal: 8),
+                        final query = _searchController.text
+                            .toUpperCase()
+                            .trim();
+                        return Material(
+                          type: MaterialType.transparency,
+                          child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                          ),
                           leading: CircleAvatar(
                             radius: 18,
-                            backgroundColor:
-                                widget.colorPrincipal.withOpacity(0.1),
+                            backgroundColor: widget.colorPrincipal.withValues(
+                              alpha: 0.1,
+                            ),
                             child: Text(
                               nombre.isNotEmpty ? nombre[0] : '?',
                               style: TextStyle(
-                                  color: widget.colorPrincipal,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13),
+                                color: widget.colorPrincipal,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                           title: _buildHighlightedText(
-                              nombre, query, widget.colorTexto,
-                              widget.colorPrincipal),
-                          onTap: () =>
-                              widget.onSeleccionado(u['id'] as int),
+                            nombre,
+                            query,
+                            widget.colorTexto,
+                            widget.colorPrincipal,
+                          ),
+                          onTap: () => widget.onSeleccionado(u['id'] as int),
+                        ),
                         );
                       },
                     ),
@@ -917,30 +994,48 @@ class _ModalBuscadorUsuarioState extends State<_ModalBuscadorUsuario> {
   }
 
   Widget _buildHighlightedText(
-      String texto, String query, Color colorBase, Color colorResaltado) {
+    String texto,
+    String query,
+    Color colorBase,
+    Color colorResaltado,
+  ) {
     if (query.isEmpty) {
-      return Text(texto,
-          style: TextStyle(
-              color: colorBase, fontWeight: FontWeight.bold, fontSize: 13));
+      return Text(
+        texto,
+        style: TextStyle(
+          color: colorBase,
+          fontWeight: FontWeight.bold,
+          fontSize: 13,
+        ),
+      );
     }
     final idx = texto.indexOf(query);
     if (idx == -1) {
-      return Text(texto,
-          style: TextStyle(
-              color: colorBase, fontWeight: FontWeight.bold, fontSize: 13));
+      return Text(
+        texto,
+        style: TextStyle(
+          color: colorBase,
+          fontWeight: FontWeight.bold,
+          fontSize: 13,
+        ),
+      );
     }
     return RichText(
       text: TextSpan(
         style: TextStyle(
-            color: colorBase, fontWeight: FontWeight.bold, fontSize: 13),
+          color: colorBase,
+          fontWeight: FontWeight.bold,
+          fontSize: 13,
+        ),
         children: [
           TextSpan(text: texto.substring(0, idx)),
           TextSpan(
             text: texto.substring(idx, idx + query.length),
             style: TextStyle(
-                color: colorResaltado,
-                fontWeight: FontWeight.w900,
-                backgroundColor: colorResaltado.withOpacity(0.12)),
+              color: colorResaltado,
+              fontWeight: FontWeight.w900,
+              backgroundColor: colorResaltado.withValues(alpha: 0.12),
+            ),
           ),
           TextSpan(text: texto.substring(idx + query.length)),
         ],

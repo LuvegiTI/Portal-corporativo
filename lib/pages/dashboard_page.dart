@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../design_system/luvegi_card.dart';
+import '../navigation/portal_menu.dart';
 import '../services/dashboard_service.dart';
 import '../theme/luvegi_colors.dart';
 import '../theme/luvegi_radius.dart';
 import '../theme/luvegi_spacing.dart';
 import '../theme/luvegi_text.dart';
+import '../widgets/avatar_usuario.dart';
 
 class DashboardPage extends StatefulWidget {
   final String token;
   final String nombre;
   final String rol;
+  final String usuarioId;
   final List<String> permisos;
   final Function(String) onNavigate;
 
@@ -19,6 +22,7 @@ class DashboardPage extends StatefulWidget {
     required this.token,
     required this.nombre,
     required this.rol,
+    required this.usuarioId,
     required this.permisos,
     required this.onNavigate,
   });
@@ -35,8 +39,19 @@ class _DashboardPageState extends State<DashboardPage> {
   int _usuariosRegistrados = 0;
 
   bool get _esAdminSistema => widget.permisos.any(
-        (permiso) => permiso.trim().toUpperCase() == 'ADMIN_SISTEMA',
-      );
+    (permiso) => permiso.trim().toUpperCase() == 'ADMIN_SISTEMA',
+  );
+
+  bool _tiene(String cod, {String? id}) {
+    final rol = widget.rol.trim().toUpperCase();
+    if (rol == 'ADMIN' || rol == 'ADMINISTRADOR') return true;
+
+    return widget.permisos.any((p) {
+      final pLimpio = p.trim().toUpperCase();
+      final codLimpio = cod.trim().toUpperCase();
+      return pLimpio == codLimpio || (id != null && pLimpio == id);
+    });
+  }
 
   @override
   void initState() {
@@ -64,10 +79,8 @@ class _DashboardPageState extends State<DashboardPage> {
       if (!mounted) return;
 
       setState(() {
-        _usuariosRegistrados = int.tryParse(
-              stats['usuarios']?.toString() ?? '0',
-            ) ??
-            0;
+        _usuariosRegistrados =
+            int.tryParse(stats['usuarios']?.toString() ?? '0') ?? 0;
       });
     } catch (e) {
       if (!mounted) return;
@@ -86,8 +99,9 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final bool mobile = width < 760;
-    final double horizontalPadding =
-        mobile ? LuvegiSpacing.md : LuvegiSpacing.xl;
+    final double horizontalPadding = mobile
+        ? LuvegiSpacing.md
+        : LuvegiSpacing.xl;
 
     return Scaffold(
       backgroundColor: LuvegiColors.background,
@@ -111,6 +125,9 @@ class _DashboardPageState extends State<DashboardPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildWelcomeBanner(mobile),
+                  const SizedBox(height: LuvegiSpacing.xl),
+
+                  _buildAccessSection(),
                   const SizedBox(height: LuvegiSpacing.xl),
 
                   if (_esAdminSistema) ...[
@@ -141,113 +158,237 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildWelcomeBanner(bool mobile) {
-  return Container(
-    width: double.infinity,
-    padding: EdgeInsets.symmetric(
-      horizontal: mobile ? 22 : 32,
-      vertical: mobile ? 22 : 26,
-    ),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(
-        color: const Color(0xFFE8E8E8),
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(.04),
-          blurRadius: 12,
-          offset: const Offset(0, 4),
-        ),
-      ],
-    ),
-    child: mobile
-        ? Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildWelcomeText(mobile),
-              const SizedBox(height: 18),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: _buildRoleBadge(),
-              ),
-            ],
-          )
-        : Row(
-            children: [
-              Expanded(
-                child: _buildWelcomeText(mobile),
-              ),
-              _buildRoleBadge(),
-            ],
-          ),
-  );
-}
- Widget _buildWelcomeText(bool mobile) {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        'Bienvenido, ${widget.nombre}',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: LuvegiText.display.copyWith(
-          fontSize: mobile ? 24 : 30,
-          fontWeight: FontWeight.w700,
-          color: LuvegiColors.textPrimary,
-        ),
-      ),
+  Widget _buildAccessSection() {
+    final grupos = agruparAccesos(buildPortalAccesses(tiene: _tiene));
+    if (grupos.isEmpty) return const SizedBox.shrink();
 
-      const SizedBox(height: 6),
-
-      Text(
-        'Portal LUVEGI · Plataforma Corporativa',
-        style: LuvegiText.body.copyWith(
-          color: LuvegiColors.textSecondary,
-          fontSize: mobile ? 14 : 15,
-        ),
-      ),
-    ],
-  );
-}
-  Widget _buildRoleBadge() {
-  return Container(
-    padding: const EdgeInsets.symmetric(
-      horizontal: 14,
-      vertical: 8,
-    ),
-    decoration: BoxDecoration(
-      color: const Color(0xFFF3F7F3),
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(
-        color: LuvegiColors.success.withOpacity(.35),
-      ),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: const BoxDecoration(
-            color: LuvegiColors.success,
-            shape: BoxShape.circle,
+        Text(
+          'Módulos',
+          style: LuvegiText.heading.copyWith(
+            fontSize: 22,
+            color: LuvegiColors.secondary,
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(height: 4),
         Text(
-          widget.rol.toUpperCase(),
-          style: LuvegiText.label.copyWith(
-            color: LuvegiColors.success,
+          'Selecciona un módulo para ingresar.',
+          style: LuvegiText.bodySecondary,
+        ),
+        const SizedBox(height: LuvegiSpacing.lg),
+        _buildModuleWrap(grupos.entries.toList()),
+      ],
+    );
+  }
+
+  Widget _buildModuleWrap(List<MapEntry<String, List<PortalAccess>>> grupos) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const double spacing = LuvegiSpacing.md;
+        final double ancho = constraints.maxWidth;
+        final int columnas = ancho >= 1200
+            ? 4
+            : ancho >= 900
+            ? 3
+            : ancho >= 560
+            ? 2
+            : 1;
+        final double anchoTarjeta =
+            (ancho - spacing * (columnas - 1)) / columnas;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (final entrada in grupos)
+              SizedBox(
+                width: anchoTarjeta,
+                child: _buildModuleCard(entrada.key, entrada.value),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildModuleCard(String grupo, List<PortalAccess> items) {
+    final int total = items.length;
+
+    return LuvegiCard(
+      onTap: () => widget.onNavigate(items.first.label),
+      padding: const EdgeInsets.all(LuvegiSpacing.md),
+      height: 96,
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: LuvegiColors.menuHover,
+              borderRadius: BorderRadius.circular(LuvegiRadius.md),
+            ),
+            child: Icon(
+              iconoGrupoPortal(grupo),
+              color: LuvegiColors.secondary,
+              size: 23,
+            ),
+          ),
+          const SizedBox(width: LuvegiSpacing.md),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  grupo,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: LuvegiText.body.copyWith(
+                    fontWeight: FontWeight.w700,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  total == 1 ? '1 opción' : '$total opciones',
+                  style: LuvegiText.bodySecondary.copyWith(fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          const Icon(
+            Icons.chevron_right_rounded,
+            color: LuvegiColors.textHint,
+            size: 20,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWelcomeBanner(bool mobile) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(
+        horizontal: mobile ? 22 : 32,
+        vertical: mobile ? 22 : 26,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE8E8E8)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: mobile
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    AvatarUsuario(
+                      token: widget.token,
+                      usuarioId: widget.usuarioId,
+                      radio: 28,
+                      colorFondo: LuvegiColors.secondary,
+                      tamanoIcono: 28,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(child: _buildWelcomeText(mobile)),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _buildRoleBadge(),
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                AvatarUsuario(
+                  token: widget.token,
+                  usuarioId: widget.usuarioId,
+                  radio: 32,
+                  colorFondo: LuvegiColors.secondary,
+                  tamanoIcono: 32,
+                ),
+                const SizedBox(width: 16),
+                Expanded(child: _buildWelcomeText(mobile)),
+                _buildRoleBadge(),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildWelcomeText(bool mobile) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Bienvenido, ${widget.nombre}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: LuvegiText.display.copyWith(
+            fontSize: mobile ? 24 : 30,
             fontWeight: FontWeight.w700,
-            letterSpacing: .3,
+            color: LuvegiColors.textPrimary,
+          ),
+        ),
+
+        const SizedBox(height: 6),
+
+        Text(
+          'Portal LUVEGI · Plataforma Corporativa',
+          style: LuvegiText.body.copyWith(
+            color: LuvegiColors.textSecondary,
+            fontSize: mobile ? 14 : 15,
           ),
         ),
       ],
-    ),
-  );
-}
+    );
+  }
+
+  Widget _buildRoleBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F7F3),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: LuvegiColors.success.withValues(alpha: .35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: LuvegiColors.success,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            widget.rol.toUpperCase(),
+            style: LuvegiText.label.copyWith(
+              color: LuvegiColors.success,
+              fontWeight: FontWeight.w700,
+              letterSpacing: .3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildUsersCard(bool mobile) {
     return Align(
       alignment: Alignment.centerLeft,
@@ -262,7 +403,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: LuvegiColors.secondary.withOpacity(0.10),
+                  color: LuvegiColors.secondary.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(LuvegiRadius.sm),
                 ),
                 child: const Icon(
@@ -274,16 +415,12 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(height: LuvegiSpacing.md),
               Text(
                 _cargando ? '...' : '$_usuariosRegistrados',
-                style: LuvegiText.display.copyWith(
-                  fontSize: 30,
-                ),
+                style: LuvegiText.display.copyWith(fontSize: 30),
               ),
               const SizedBox(height: LuvegiSpacing.xs),
               Text(
                 'Usuarios registrados',
-                style: LuvegiText.body.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+                style: LuvegiText.body.copyWith(fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -295,14 +432,12 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildSecurityCard(bool mobile) {
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(
-        mobile ? LuvegiSpacing.lg : LuvegiSpacing.xl,
-      ),
+      padding: EdgeInsets.all(mobile ? LuvegiSpacing.lg : LuvegiSpacing.xl),
       decoration: BoxDecoration(
         color: LuvegiColors.surface,
         borderRadius: BorderRadius.circular(LuvegiRadius.lg),
         border: Border.all(
-          color: LuvegiColors.info.withOpacity(0.55),
+          color: LuvegiColors.info.withValues(alpha: 0.55),
           width: 1.4,
         ),
       ),
@@ -357,19 +492,14 @@ class _DashboardPageState extends State<DashboardPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(LuvegiSpacing.md),
       decoration: BoxDecoration(
-        color: LuvegiColors.warning.withOpacity(0.08),
+        color: LuvegiColors.warning.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(LuvegiRadius.sm),
-        border: Border.all(
-          color: LuvegiColors.warning.withOpacity(0.35),
-        ),
+        border: Border.all(color: LuvegiColors.warning.withValues(alpha: 0.35)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.warning_amber_rounded,
-            color: LuvegiColors.warning,
-          ),
+          const Icon(Icons.warning_amber_rounded, color: LuvegiColors.warning),
           const SizedBox(width: LuvegiSpacing.sm),
           Expanded(
             child: Text(

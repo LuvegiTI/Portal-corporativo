@@ -117,3 +117,30 @@ app.*.symbols
 !**/ios/**/default.perspectivev3
 !/packages/flutter_tools/test/data/dart_dependencies_test/**/.packages
 !/dev/ci/**/Gemfile.lock
+# Widget Preview related
+.widget_preview/
+.aider*
+
+# Backend PHP: copias locales de los archivos del servidor.
+# NUNCA versionar: contiene JWT_SECRET, credenciales de MySQL y de Odoo,
+# la API Key de Gemini, error_log y caches de produccion.
+/php/
+
+# Configuracion del IDE (IntelliJ/Android Studio/VS Code).
+# NUNCA versionar lo que depende de cada maquina: guarda rutas absolutas al
+# SDK de Dart y Flutter que quedan rotas en cuanto alguien mueve o
+# reinstala Flutter. Eso es lo que pone los archivos en rojo en el IDE.
+# Si se comparte: .idea/modules.xml y .idea/runConfigurations/
+/.idea/libraries/
+/.idea/workspace.xml
+/.idea/tasks.xml
+/.idea/usage.statistics.xml
+/.idea/dictionaries/
+/.idea/shelf/
+*.iml
+/.vscode/
+
+# Backups de archivos (no deben subirse)
+*.bak
+*.orig
+*.rej

@@ -20,16 +20,17 @@ class ReporteOrdenCompraService {
           headers: {
             'Content-Type': 'application/json; charset=UTF-8',
             'Accept': 'application/json',
+            'Accept-Encoding': 'gzip',
             'Authorization': 'Bearer $token',
           },
           body: jsonEncode({
-            'tipo_busqueda': tipoBusqueda.trim(),
+            'tipo_filtro': tipoBusqueda.trim(),
             'busqueda': busqueda.trim(),
-            'page': page,
-            'page_size': pageSize,
+            'pagina': page,
+            'limite': pageSize,
           }),
         )
-        .timeout(const Duration(seconds: 60));
+        .timeout(const Duration(seconds: 30));
 
     Map<String, dynamic> body;
     try {
@@ -48,11 +49,47 @@ class ReporteOrdenCompraService {
         response.statusCode >= 300 ||
         body['ok'] != true) {
       throw Exception(
-        (body['mensaje'] ?? body['error'] ?? 'No se pudo consultar el reporte.')
+        (body['message'] ?? body['error'] ?? 'No se pudo consultar el reporte.')
             .toString(),
       );
     }
 
     return ReporteOrdenCompraResponse.fromJson(body);
+  }
+}
+
+class ReporteOrdenCompraResponse {
+  final List<ReporteOrdenCompra> data;
+  final int pagina;
+  final int limite;
+  final int totalPaginas;
+  final int totalRegistros;
+  final double totalSinImpuesto;
+  final double totalConImpuesto;
+
+  ReporteOrdenCompraResponse({
+    required this.data,
+    required this.pagina,
+    required this.limite,
+    required this.totalPaginas,
+    required this.totalRegistros,
+    required this.totalSinImpuesto,
+    required this.totalConImpuesto,
+  });
+
+  factory ReporteOrdenCompraResponse.fromJson(Map<String, dynamic> json) {
+    return ReporteOrdenCompraResponse(
+      data:
+          (json['data'] as List?)
+              ?.map((item) => ReporteOrdenCompra.fromJson(item))
+              .toList() ??
+          [],
+      pagina: json['pagina'] ?? 1,
+      limite: json['limite'] ?? 25,
+      totalPaginas: json['total_paginas'] ?? 0,
+      totalRegistros: json['total_registros'] ?? 0,
+      totalSinImpuesto: (json['total_sin_impuesto'] ?? 0).toDouble(),
+      totalConImpuesto: (json['total_con_impuesto'] ?? 0).toDouble(),
+    );
   }
 }

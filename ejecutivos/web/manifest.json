@@ -1,12 +1,12 @@
 {
-    "name": "ejecutivos",
-    "short_name": "ejecutivos",
+    "name": "LUVEGI | Contacto Directo",
+    "short_name": "LUVEGI",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#FFFFFF",
+    "theme_color": "#FF0000",
+    "description": "Tarjeta de contacto de los ejecutivos de LUVEGI. Comunicación directa por WhatsApp, sitio web y redes sociales.",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {

@@ -3,7 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'tracking.dart';
+
 const String baseImg = "https://contacto.luvegi.com/recursos/";
+const String logoLuvegi = "logo.webp";
+const String urlLuvegi = "https://www.luvegi.com";
 
 void main() {
   runApp(const LuvegiApp());
@@ -35,12 +39,12 @@ final Map<String, Ejecutivo> ejecutivos = {
   "09": const Ejecutivo(nombre: "RENZO GONZALEZ", cargo: "EJECUTIVO COMERCIAL", wsp: "940187291", foto: "fotoRenzo.webp"),
   "10": const Ejecutivo(nombre: "LUIS HURTADO", cargo: "GERENTE COMERCIAL", wsp: "991999475", foto: "fotoLuis.webp"),
   "11": const Ejecutivo(nombre: "ISSAYA CHAVEZ", cargo: "EJECUTIVA COMERCIAL", wsp: "997127370", foto: "fotoIssaya.webp"),
-  "12": const Ejecutivo(nombre: "MAURICIO GIUSTI", cargo: "GERENTE GENERAL", wsp: "991999494", foto: ""),
+  "12": const Ejecutivo(nombre: "OSCAR ERNAU", cargo: "EJECUTIVO COMERCIAL", wsp: "987212629", foto: "fotoOscar.webp"),
   "13": const Ejecutivo(nombre: "LUIS GIUSTI", cargo: "GERENTE DE DESARROLLO Y ESTRATEGIA DE NEGOCIO", wsp: "991999495", foto: "fotoLuwa.webp"),
   "14": const Ejecutivo(nombre: "DIEGO CASARIEGO", cargo: "EJECUTIVO DE NEGOCIOS RENTA", wsp: "991999490", foto: "fotoDiego.webp"),
   "15": const Ejecutivo(nombre: "LUIS CESPEDES", cargo: "JEFE COMERCIAL DE RENTA", wsp: "965380922", foto: "fotoLuisCespedes.webp"),
   "16": const Ejecutivo(nombre: "JOSE RAMOS", cargo: "EJECUTIVO POSTVENTA", wsp: "991999466", foto: "fotoJose.webp"),
-  "17": const Ejecutivo(nombre: "PAOLA ESCOBEDO", cargo: "EJECUTIVA COMERCIAL", wsp: "959752400", foto: "fotoPaola.webp"),
+  //"17": const Ejecutivo(nombre: "PAOLA ESCOBEDO", cargo: "EJECUTIVA COMERCIAL", wsp: "959752400", foto: "fotoPaola.webp"),
   "18": const Ejecutivo(nombre: "SERGIO ALVAREZ", cargo: "SUB GERENTE DE PROYECTOS", wsp: "991999451", foto: "fotoSergio.webp"),
   "19": const Ejecutivo(nombre: "JHONATAN TORRES", cargo: "JEFE COMERCIAL DE SERVICIOS", wsp: "991999445", foto: "fotoJhonatan.webp"),
 };
@@ -58,18 +62,79 @@ class LuvegiApp extends StatelessWidget {
   }
 }
 
-class TarjetaEjecutivaPage extends StatelessWidget {
-  const TarjetaEjecutivaPage({super.key});
+/// Resuelve el ejecutivo a partir de la URL.
+///
+/// Acepta `/01`, `/ejecutivos/01` (subdirectorio) y `?e=01` o `?e=rafael-bolivar`.
+/// Si la ruta no corresponde a ningun ejecutivo devuelve null, para no mostrar la
+/// tarjeta de otra persona.
+Ejecutivo? resolverEjecutivo(Uri uri) {
+  for (final segmento in uri.pathSegments.reversed) {
+    final encontrado = ejecutivos[segmento];
+    if (encontrado != null) return encontrado;
+  }
 
-  Ejecutivo get ejecutivoActual {
-    final path = Uri.base.pathSegments.isNotEmpty ? Uri.base.pathSegments.first : "01";
-    return ejecutivos[path] ?? ejecutivos["01"]!;
+  final parametro = uri.queryParameters[_parametroEjecutivo]?.trim().toLowerCase();
+  if (parametro == null || parametro.isEmpty) return null;
+
+  return ejecutivos[parametro] ?? ejecutivoPorNombre[parametro];
+}
+
+const String _parametroEjecutivo = "e";
+
+final Map<String, Ejecutivo> ejecutivoPorNombre = {
+  for (final entrada in ejecutivos.entries)
+    _slugNombre(entrada.value.nombre): entrada.value,
+};
+
+String _slugNombre(String nombre) =>
+    nombre.toLowerCase().replaceAll(" ", "-");
+
+String? codigoDe(Ejecutivo ejecutivo) {
+  for (final entrada in ejecutivos.entries) {
+    if (identical(entrada.value, ejecutivo) ||
+        entrada.value.nombre == ejecutivo.nombre) {
+      return entrada.key;
+    }
+  }
+  return null;
+}
+
+class TarjetaEjecutivaPage extends StatefulWidget {
+  final Ejecutivo? ejecutivo;
+
+  const TarjetaEjecutivaPage({super.key, this.ejecutivo});
+
+  @override
+  State<TarjetaEjecutivaPage> createState() => _TarjetaEjecutivaPageState();
+}
+
+class _TarjetaEjecutivaPageState extends State<TarjetaEjecutivaPage> {
+  @override
+  void initState() {
+    super.initState();
+
+    final actual = widget.ejecutivo ?? resolverEjecutivo(Uri.base);
+    if (actual != null) {
+      TarjetaTracking.visita(codigoDe(actual));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final ejecutivo = ejecutivoActual;
+    final actual = widget.ejecutivo ?? resolverEjecutivo(Uri.base);
+    if (actual == null) return const _TarjetaNoEncontradaPage();
 
+    return _TarjetaEjecutivaLayout(ejecutivo: actual);
+  }
+}
+
+class _TarjetaEjecutivaLayout extends StatelessWidget {
+  final Ejecutivo ejecutivo;
+
+  const _TarjetaEjecutivaLayout({required this.ejecutivo});
+
+  @override
+  Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final w = constraints.maxWidth;
@@ -121,6 +186,104 @@ class TarjetaEjecutivaPage extends StatelessWidget {
                   screenWidth: w,
                   screenHeight: h,
                 ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _TarjetaNoEncontradaPage extends StatelessWidget {
+  const _TarjetaNoEncontradaPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 700;
+        final escala = isMobile ? 1.0 : (constraints.maxWidth / 1100).clamp(1.0, 1.6);
+
+        return Scaffold(
+          backgroundColor: isMobile ? Colors.white : const Color(0xFFFF0000),
+          body: Stack(
+            children: [
+              if (!isMobile) const Positioned.fill(child: _FondoPuntos()),
+              Center(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.symmetric(horizontal: 28 * escala, vertical: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 190 * escala,
+                        height: 60 * escala,
+                        alignment: Alignment.center,
+                        child: Image.network(
+                          "$baseImg$logoLuvegi",
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) => Text(
+                            "LUVEGI",
+                            style: GoogleFonts.montserrat(
+                              color: isMobile ? const Color(0xFF111111) : Colors.white,
+                              fontSize: 34 * escala,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 40 * escala),
+                      Text(
+                        "TARJETA NO ENCONTRADA",
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.montserrat(
+                          color: isMobile ? const Color(0xFF111111) : Colors.white,
+                          fontSize: 28 * escala,
+                          fontWeight: FontWeight.w900,
+                          height: 1.1,
+                        ),
+                      ),
+                      SizedBox(height: 16 * escala),
+                      Text(
+                        "El enlace que abriste no corresponde a ningún ejecutivo. "
+                        "Revisa la dirección o escríbenos por nuestros canales oficiales.",
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.montserrat(
+                          color: isMobile ? const Color(0xFF555555) : Colors.white.withValues(alpha: .92),
+                          fontSize: 15 * escala,
+                          fontWeight: FontWeight.w400,
+                          height: 1.5,
+                        ),
+                      ),
+                      SizedBox(height: 34 * escala),
+                      Semantics(
+                        button: true,
+                        label: "Ir al sitio web de LUVEGI",
+                        child: GestureDetector(
+                          onTap: () => _abrirExterno(urlLuvegi),
+                          child: Container(
+                            width: 220 * escala,
+                            height: 46 * escala,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: Colors.black,
+                              borderRadius: BorderRadius.circular(25),
+                            ),
+                            child: Text(
+                              urlLuvegi.replaceFirst("https://", ""),
+                              style: GoogleFonts.montserrat(
+                                color: Colors.white,
+                                fontSize: 14 * escala,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         );
@@ -199,7 +362,7 @@ class _PuntosPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white.withOpacity(0.28)
+      ..color = Colors.white.withValues(alpha: 0.28)
       ..style = PaintingStyle.fill;
 
     const gap = 20.0;
@@ -217,7 +380,7 @@ class _PuntosPainter extends CustomPainter {
 }
 
 class _PanelIzquierdo extends StatelessWidget {
-  const _PanelIzquierdo({super.key});
+  const _PanelIzquierdo();
 
   @override
   Widget build(BuildContext context) {
@@ -253,7 +416,7 @@ class _PanelIzquierdo extends StatelessWidget {
               top: h * 0.18,
               left: 30,
               right: 30,
-              child: Container(height: 2.5, color: Colors.white.withOpacity(.65)),
+              child: Container(height: 2.5, color: Colors.white.withValues(alpha: .65)),
             ),
             Positioned(
               top: h * 0.21,
@@ -364,7 +527,7 @@ class _PanelDerecho extends StatelessWidget {
               top: h * 0.18,
               left: 30,
               right: 30,
-              child: Container(height: 2.5, color: Colors.white.withOpacity(.6)),
+              child: Container(height: 2.5, color: Colors.white.withValues(alpha: .6)),
             ),
             Positioned(
               top: h * 0.23,
@@ -373,9 +536,8 @@ class _PanelDerecho extends StatelessWidget {
               child: SizedBox(
                 width: 349,
                 height: 597,
-                child: Image.network(
-                  "${baseImg}recurso.webp",
-                  fit: BoxFit.contain,
+                child: _ImagenRemota(
+                  nombre: "recurso.webp",
                   color: Colors.white,
                 ),
               ),
@@ -404,17 +566,17 @@ class _TarjetaCentral extends StatelessWidget {
   bool get isTablet => mode == _CardMode.tablet;
   bool get isDesktop => mode == _CardMode.desktop;
 
-  Future<void> _abrir(String url) async {
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-  }
+  Future<void> _whatsapp() {
+    if (ejecutivo.wsp.trim().isEmpty) return Future.value();
 
-  Future<void> _whatsapp() async {
-    if (ejecutivo.wsp.trim().isEmpty) return;
+    final mensaje =
+        "Hola ${ejecutivo.nombre}, quisiera más información.";
+    final numero = "51${ejecutivo.wsp}";
 
-    final msg = Uri.encodeComponent("Hola ${ejecutivo.nombre}, quisiera más información.");
-    await launchUrl(
-      Uri.parse("https://wa.me/51${ejecutivo.wsp}?text=$msg"),
-      mode: LaunchMode.externalApplication,
+    TarjetaTracking.clicWhatsapp(codigoDe(ejecutivo), numero, mensaje);
+
+    return _abrirExterno(
+      "https://wa.me/$numero?text=${Uri.encodeComponent(mensaje)}",
     );
   }
 
@@ -460,7 +622,7 @@ class _TarjetaCentral extends StatelessWidget {
                   ? []
                   : [
                       BoxShadow(
-                        color: Colors.black.withOpacity(.18),
+                        color: Colors.black.withValues(alpha: .18),
                         blurRadius: 30,
                         offset: const Offset(0, 12),
                       ),
@@ -475,11 +637,10 @@ class _TarjetaCentral extends StatelessWidget {
                   width: double.infinity,
                   color: Colors.white,
                   alignment: Alignment.center,
-                  child: Image.network(
-                    "${baseImg}logo.webp",
+                  child: _ImagenRemota(
+                    nombre: "logo.webp",
                     width: v(isMobile ? 220 : 200),
                     height: v(isMobile ? 65 : 62),
-                    fit: BoxFit.contain,
                   ),
                 ),
 
@@ -506,7 +667,7 @@ class _TarjetaCentral extends StatelessWidget {
                                     textAlign: TextAlign.center,
                                     maxLines: 2,
                                     style: GoogleFonts.montserrat(
-                                      color: Colors.white.withOpacity(.95),
+                                      color: Colors.white.withValues(alpha: .95),
                                       fontSize: cargoFs,
                                       fontWeight: FontWeight.w500,
                                       letterSpacing: 1.2,
@@ -546,7 +707,7 @@ class _TarjetaCentral extends StatelessWidget {
                           color: Colors.white,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(.10),
+                              color: Colors.black.withValues(alpha: .10),
                               blurRadius: 12,
                               offset: const Offset(0, 4),
                             ),
@@ -564,9 +725,18 @@ class _TarjetaCentral extends StatelessWidget {
                                     color: Colors.grey.shade300,
                                   ),
                                 )
-                              : Image.network(
-                                  "$baseImg${ejecutivo.foto}",
+                              : _ImagenRemota(
+                                  nombre: ejecutivo.foto,
                                   fit: BoxFit.cover,
+                                  marcador: Container(
+                                    color: Colors.white,
+                                    alignment: Alignment.center,
+                                    child: Icon(
+                                      Icons.person,
+                                      size: v(58),
+                                      color: Colors.grey.shade300,
+                                    ),
+                                  ),
                                 ),
                         ),
                       ),
@@ -654,22 +824,27 @@ class _TarjetaCentral extends StatelessWidget {
 
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: v(isMobile ? 30 : 28)),
-                  child: GestureDetector(
-                    onTap: ejecutivo.wsp.trim().isEmpty ? null : _whatsapp,
-                    child: Container(
-                      width: double.infinity,
-                      height: btnH,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFF0000),
-                        borderRadius: BorderRadius.circular(35),
-                      ),
-                      child: Text(
-                        isMobile ? "GUARDAR CONTACTO" : "CONTACTAR POR WHATSAPP",
-                        style: GoogleFonts.montserrat(
-                          color: Colors.white,
-                          fontSize: fs(isMobile ? 17 : 12),
-                          fontWeight: FontWeight.w900,
+                  child: Semantics(
+                    button: true,
+                    enabled: ejecutivo.wsp.trim().isNotEmpty,
+                    label: "Contactar por WhatsApp a ${ejecutivo.nombre}",
+                    child: GestureDetector(
+                      onTap: ejecutivo.wsp.trim().isEmpty ? null : _whatsapp,
+                      child: Container(
+                        width: double.infinity,
+                        height: btnH,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF0000),
+                          borderRadius: BorderRadius.circular(35),
+                        ),
+                        child: Text(
+                          isMobile ? "GUARDAR CONTACTO" : "CONTACTAR POR WHATSAPP",
+                          style: GoogleFonts.montserrat(
+                            color: Colors.white,
+                            fontSize: fs(isMobile ? 17 : 12),
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
                       ),
                     ),
@@ -678,22 +853,26 @@ class _TarjetaCentral extends StatelessWidget {
 
                 SizedBox(height: v(14)),
 
-                GestureDetector(
-                  onTap: () => _abrir("https://www.luvegi.com"),
-                  child: Container(
-                    width: v(isMobile ? 180 : 165),
-                    height: btnWebH,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius: BorderRadius.circular(25),
-                    ),
-                    child: Text(
-                      "www.luvegi.com",
-                      style: GoogleFonts.montserrat(
-                        color: Colors.white,
-                        fontSize: fs(isMobile ? 13 : 12),
-                        fontWeight: FontWeight.w800,
+                Semantics(
+                  button: true,
+                  label: "Ir al sitio web de LUVEGI",
+                  child: GestureDetector(
+                    onTap: () => _abrirExterno(urlLuvegi),
+                    child: Container(
+                      width: v(isMobile ? 180 : 165),
+                      height: btnWebH,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        borderRadius: BorderRadius.circular(25),
+                      ),
+                      child: Text(
+                        urlLuvegi.replaceFirst("https://", ""),
+                        style: GoogleFonts.montserrat(
+                          color: Colors.white,
+                          fontSize: fs(isMobile ? 13 : 12),
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
                   ),
@@ -817,10 +996,7 @@ class _Producto extends StatelessWidget {
             maxWidth: 90 * s,
             maxHeight: 56 * s,
           ),
-          child: Image.network(
-            "$baseImg$img",
-            fit: BoxFit.contain,
-          ),
+          child: _ImagenRemota(nombre: img),
         ),
       ],
     );
@@ -834,22 +1010,74 @@ class _Social extends StatelessWidget {
 
   const _Social(this.img, this.url, {required this.scale});
 
-  Future<void> _abrir() async {
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-  }
+  Future<void> _abrir() => _abrirExterno(url);
 
   @override
   Widget build(BuildContext context) {
     final size = 26 * scale.clamp(0.85, 1.05);
 
-    return GestureDetector(
-      onTap: _abrir,
-      child: Image.network(
-        "$baseImg$img",
-        width: size,
-        height: size,
-        fit: BoxFit.contain,
+    return Semantics(
+      button: true,
+      label: "Abrir $url",
+      child: GestureDetector(
+        onTap: _abrir,
+        child: _ImagenRemota(
+          nombre: img,
+          width: size,
+          height: size,
+        ),
       ),
+    );
+  }
+}
+
+Future<void> _abrirExterno(String url) async {
+  try {
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  } catch (_) {}
+}
+
+/// Imagen remota con estados de carga y error, para que un fallo de red no
+/// deje un hueco roto ni desplace el layout.
+class _ImagenRemota extends StatelessWidget {
+  final String nombre;
+  final double? width;
+  final double? height;
+  final BoxFit fit;
+  final Color? color;
+  final Widget? marcador;
+
+  const _ImagenRemota({
+    required this.nombre,
+    this.width,
+    this.height,
+    this.fit = BoxFit.contain,
+    this.color,
+    this.marcador,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final reemplazo = marcador ??
+        SizedBox(
+          width: width,
+          height: height,
+          child: const Center(
+            child: Icon(Icons.image_not_supported_outlined, size: 28),
+          ),
+        );
+
+    return Image.network(
+      "$baseImg$nombre",
+      width: width,
+      height: height,
+      fit: fit,
+      color: color,
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded || frame != null) return child;
+        return SizedBox(width: width, height: height);
+      },
+      errorBuilder: (context, error, stackTrace) => reemplazo,
     );
   }
 }

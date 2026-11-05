@@ -9,6 +9,7 @@ class LuvegiCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
   final double? width;
+  final double? maxWidth;
   final double? height;
   final VoidCallback? onTap;
   final Color? backgroundColor;
@@ -18,6 +19,7 @@ class LuvegiCard extends StatelessWidget {
     required this.child,
     this.padding,
     this.width,
+    this.maxWidth,
     this.height,
     this.onTap,
     this.backgroundColor,
@@ -25,32 +27,36 @@ class LuvegiCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final content = Container(
-      width: width,
-      height: height,
-      padding: padding ??
-          const EdgeInsets.all(
-            LuvegiSpacing.lg,
-          ),
-      decoration: BoxDecoration(
-        color: backgroundColor ?? LuvegiColors.card,
-        borderRadius: BorderRadius.circular(LuvegiRadius.lg),
-        border: Border.all(
-          color: LuvegiColors.border,
-        ),
-        boxShadow: LuvegiShadows.card,
-      ),
+    final radius = BorderRadius.circular(LuvegiRadius.lg);
+
+    Widget inner = Padding(
+      padding: padding ?? const EdgeInsets.all(LuvegiSpacing.lg),
       child: child,
     );
 
-    if (onTap == null) {
-      return content;
+    if (onTap != null) {
+      inner = InkWell(onTap: onTap, child: inner);
     }
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(LuvegiRadius.lg),
-      child: content,
+    return Container(
+      width: width,
+      height: height,
+      constraints: maxWidth != null
+          ? BoxConstraints(maxWidth: maxWidth!)
+          : null,
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        boxShadow: LuvegiShadows.card,
+      ),
+      child: Material(
+        color: backgroundColor ?? LuvegiColors.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: radius,
+          side: const BorderSide(color: LuvegiColors.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: inner,
+      ),
     );
   }
 }

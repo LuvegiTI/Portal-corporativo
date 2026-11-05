@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../utils/mensaje_error.dart';
 
 class ImportarAlmacenService {
   static const String _url =
@@ -16,16 +17,13 @@ class ImportarAlmacenService {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       },
-      body: jsonEncode({
-        'picking': picking.trim(),
-        'lineas': lineas,
-      }),
+      body: jsonEncode({'picking': picking.trim(), 'lineas': lineas}),
     );
 
     final data = jsonDecode(res.body);
 
     if (res.statusCode != 200 || data['ok'] != true) {
-      throw Exception(data['error'] ?? 'Error al importar almacén');
+      throw Exception(MensajeError.desdeCodigo(data['error']?.toString()));
     }
 
     return Map<String, dynamic>.from(data);
