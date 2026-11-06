@@ -192,6 +192,7 @@ class EncuestaVotable {
   final bool puedeResponder;
   final bool dentroDeVentana;
   final bool yaRespondio;
+  final bool restringida;
   final String? recibo;
   final String? fechaRespuesta;
 
@@ -201,6 +202,7 @@ class EncuestaVotable {
     required this.puedeResponder,
     required this.dentroDeVentana,
     required this.yaRespondio,
+    this.restringida = false,
     this.recibo,
     this.fechaRespuesta,
   });
@@ -230,6 +232,7 @@ class EncuestaVotable {
       puedeResponder: json['puede_responder'] != false,
       dentroDeVentana: json['dentro_de_ventana'] != false,
       yaRespondio: json['ya_respondio'] == true,
+      restringida: json['restringida'] == true,
       recibo: json['recibo']?.toString(),
       fechaRespuesta: json['fecha_respuesta']?.toString(),
     );
@@ -573,6 +576,49 @@ class EncuestaService {
         .whereType<Map>()
         .map((e) => EncuestaVotable.fromJson(Map<String, dynamic>.from(e)))
         .toList();
+  }
+
+  /// Personal habilitado a votar en una encuesta.
+  /// Si la lista viene vacia, la encuesta queda abierta a todo el personal
+  /// con el permiso VOTAR_ELECCIONES.
+  Future<Map<String, dynamic>> guardarVotantes({
+    required String token,
+    required int encuestaId,
+    required List<int> usuarioIds,
+  }) async {
+    final res = await http
+        .post(
+          Uri.parse('$_adminUrl?action=guardar_votantes'),
+          headers: _headers(token),
+          body: jsonEncode({
+            'encuesta_id': encuestaId,
+            'usuario_ids': usuarioIds,
+          }),
+        )
+        .timeout(_timeout);
+
+    if (res.statusCode != 200) throw _handleError(res);
+    final data = _decodificar(res);
+    _verificarOk(data, res);
+    return data;
+  }
+
+  /// Lista el personal y quien esta habilitado en esa encuesta.
+  Future<Map<String, dynamic>> listarVotantes({
+    required String token,
+    required int encuestaId,
+  }) async {
+    final res = await http
+        .get(
+          Uri.parse('$_adminUrl?action=votantes&encuesta_id=$encuestaId'),
+          headers: _headers(token),
+        )
+        .timeout(_timeout);
+
+    if (res.statusCode != 200) throw _handleError(res);
+    final data = _decodificar(res);
+    _verificarOk(data, res);
+    return data;
   }
 
   Future<Map<String, dynamic>> responder({

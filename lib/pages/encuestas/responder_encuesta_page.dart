@@ -285,6 +285,26 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
                   '${e.encuesta.fechaFin != null ? ' · cierra ${e.encuesta.fechaFin}' : ''}',
                   style: LuvegiText.caption,
                 ),
+                if (e.restringida) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.lock_outline,
+                        size: 14,
+                        color: LuvegiColors.secondary,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Solo el personal habilitado puede votar',
+                        style: LuvegiText.caption.copyWith(
+                          color: LuvegiColors.secondary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -292,7 +312,11 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
           if (e.yaRespondio)
             _buildGracias(e)
           else if (!e.puedeResponder)
-            _aviso('No tienes permiso para participar en esta encuesta.')
+            _aviso(
+              e.restringida
+                  ? 'No estás habilitado para votar en esta encuesta.'
+                  : 'No tienes permiso para participar en esta encuesta.',
+            )
           else if (!e.dentroDeVentana)
             _aviso('La encuesta no está dentro del periodo habilitado.')
           else ...[
