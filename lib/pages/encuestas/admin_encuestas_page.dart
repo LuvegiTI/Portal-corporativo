@@ -662,7 +662,7 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
           return AlertDialog(
             title: const Text('Personal que puede votar'),
             content: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 460, maxHeight: 520),
+              constraints: const BoxConstraints(maxWidth: 460, maxHeight: 620),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -706,7 +706,12 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
                     ],
                   ),
                   const Divider(height: 1),
-                  Flexible(
+                  // Altura explicita: un ListView dentro de una Column sin
+                  // altura acotada lanza "RenderViewport does not support
+                  // returning intrinsic dimensions".
+                  SizedBox(
+                    height:
+                        (MediaQuery.of(ctx).size.height * 0.42).clamp(180.0, 360.0),
                     child: ListView.builder(
                       itemCount: filtrados.length,
                       itemBuilder: (_, i) {
