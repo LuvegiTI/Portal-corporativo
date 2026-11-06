@@ -23,7 +23,6 @@ class AdminUsuariosPage extends StatefulWidget {
 
 class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
   bool _cargando = true;
-  bool _sincronizandoDni = false;
   bool _sincronizandoCesados = false;
   bool _buscandoDni = false;
   Map<String, dynamic>? _dniEncontrado;
@@ -75,61 +74,6 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
       debugPrint('Error cargando usuarios: $e');
     } finally {
       if (mounted) setState(() => _cargando = false);
-    }
-  }
-
-  /// Rellena el DNI de los usuarios desde Odoo (hr.employee). Con el DNI el
-  /// emparejamiento con las fotos deja de depender del nombre.
-  Future<void> _sincronizarDni() async {
-    setState(() => _sincronizandoDni = true);
-    try {
-      final url = Uri.parse(
-        '$_baseUrl/admin_usuarios.php?action=sincronizar_dni',
-      );
-      final response = await http.get(
-        url,
-        headers: {
-          'Authorization': 'Bearer ${widget.token}',
-          'Content-Type': 'application/json',
-        },
-      );
-
-      final body = json.decode(response.body);
-      if (!mounted) return;
-
-      if (response.statusCode == 200 && body['ok'] == true) {
-        final actualizados = (body['actualizados'] as num?)?.toInt() ?? 0;
-        final sinCruce = (body['sin_cruce'] as num?)?.toInt() ?? 0;
-        final conflictos = (body['conflictos'] as List?)?.length ?? 0;
-        await _cargarDatos();
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'DNI sincronizados: $actualizados | sin cruce: $sinCruce'
-              '${conflictos > 0 ? ' | conflictos: $conflictos' : ''}',
-            ),
-            backgroundColor: LuvegiColors.success,
-          ),
-        );
-      } else {
-        final mensaje =
-            body['mensaje']?.toString() ??
-            MensajeError.desdeCodigo(body['error']?.toString());
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(mensaje), backgroundColor: LuvegiColors.error),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(MensajeError.desdeExcepcion(e)),
-          backgroundColor: LuvegiColors.error,
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _sincronizandoDni = false);
     }
   }
 
@@ -1444,23 +1388,6 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                         _sincronizandoCesados
                             ? 'Sincronizando...'
                             : 'Cesados (Odoo)',
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: LuvegiColors.secondary,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      onPressed: _sincronizandoDni ? null : _sincronizarDni,
-                      icon: _sincronizandoDni
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.badge_outlined, size: 18),
-                      label: Text(
-                        _sincronizandoDni ? 'Sincronizando...' : 'Sincronizar DNI',
                       ),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: LuvegiColors.secondary,
