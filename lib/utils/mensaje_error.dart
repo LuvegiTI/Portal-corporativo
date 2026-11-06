@@ -221,42 +221,47 @@ class MensajeError {
   }
 
   static String _desdeDio(DioException e) {
-    switch (e.type) {
-      case DioExceptionType.connectionTimeout:
-      case DioExceptionType.sendTimeout:
-      case DioExceptionType.receiveTimeout:
-      case DioExceptionType.connectionError:
-      case DioExceptionType.unknown:
-        final data = e.response?.data;
-        if (data is Map) {
-          final codigo = data['error']?.toString();
-          if (codigo != null && codigo.trim().isNotEmpty) {
-            return desdeCodigo(codigo);
-          }
-          final mensaje = data['mensaje']?.toString();
-          if (mensaje != null && mensaje.trim().isNotEmpty) {
-            return desdeCodigo(mensaje);
-          }
+    // Se despacha con if/else y no con switch a proposito: DioExceptionType
+    // gana casos entre versiones (la 5.10 agrego transformTimeout) y un
+    // switch sobre el enum deja de compilar cuando aparece uno nuevo.
+    final tipo = e.type;
+
+    if (tipo == DioExceptionType.badResponse) {
+      final data = e.response?.data;
+      if (data is Map) {
+        final codigo = data['error']?.toString();
+        if (codigo != null && codigo.trim().isNotEmpty) {
+          return desdeCodigo(codigo);
         }
-        return _sinConexion;
-      case DioExceptionType.badResponse:
-        final data = e.response?.data;
-        if (data is Map) {
-          final codigo = data['error']?.toString();
-          if (codigo != null && codigo.trim().isNotEmpty) {
-            return desdeCodigo(codigo);
-          }
-          final mensaje = data['mensaje']?.toString();
-          if (mensaje != null && mensaje.trim().isNotEmpty) {
-            return desdeCodigo(mensaje);
-          }
+        final mensaje = data['mensaje']?.toString();
+        if (mensaje != null && mensaje.trim().isNotEmpty) {
+          return desdeCodigo(mensaje);
         }
-        return _generico;
-      case DioExceptionType.cancel:
-        return _generico;
-      case DioExceptionType.badCertificate:
-        return _generico;
+      }
+      return _generico;
     }
+
+    if (tipo == DioExceptionType.connectionTimeout ||
+        tipo == DioExceptionType.sendTimeout ||
+        tipo == DioExceptionType.receiveTimeout ||
+        tipo == DioExceptionType.connectionError ||
+        tipo == DioExceptionType.unknown) {
+      final data = e.response?.data;
+      if (data is Map) {
+        final codigo = data['error']?.toString();
+        if (codigo != null && codigo.trim().isNotEmpty) {
+          return desdeCodigo(codigo);
+        }
+        final mensaje = data['mensaje']?.toString();
+        if (mensaje != null && mensaje.trim().isNotEmpty) {
+          return desdeCodigo(mensaje);
+        }
+      }
+      return _sinConexion;
+    }
+
+    // cancel, badCertificate y cualquier tipo nuevo que agregue dio.
+    return _generico;
   }
 
   static String _normalizar(String v) =>

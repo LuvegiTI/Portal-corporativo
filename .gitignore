@@ -1,11 +1,16 @@
 # Miscellaneous
 *.class
-*.lock
 *.log
 *.pyc
 *.swp
 .buildlog/
 .history
+
+# pubspec.lock SI se versiona: esto es una aplicacion, no una libreria.
+# Fijar las versiones garantiza que todos los developers y el servidor de
+# build usen exactamente los mismos paquetes. (Flutter lo recomienda para apps.)
+# Si se dejara fuera, cada clon resolveria versiones distintas y podrian
+# aparecer errores de compilacion que solo se ven en la maquina de uno.
 
 
 

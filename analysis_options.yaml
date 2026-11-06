@@ -16,6 +16,11 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
+    # ejecutivos/ es OTRO proyecto Flutter con su propio pubspec.yaml y sus
+    # propias dependencias. El analizador raiz no las resuelve y reporta
+    # errores falsos. Para analizarlo hay que entrar a esa carpeta y correr
+    # `flutter pub get` y `flutter analyze` ahi.
+    - ejecutivos/**
 include: package:flutter_lints/flutter.yaml
 
 linter:
