@@ -184,6 +184,58 @@ class EncuestaUsuario {
   }
 }
 
+/// Una encuesta abierta mas el estado del usuario frente a ella.
+/// Puede haber varias abiertas a la vez y el usuario vota en cada una.
+class EncuestaVotable {
+  final Encuesta encuesta;
+  final List<EncuestaPregunta> preguntas;
+  final bool puedeResponder;
+  final bool dentroDeVentana;
+  final bool yaRespondio;
+  final String? recibo;
+  final String? fechaRespuesta;
+
+  const EncuestaVotable({
+    required this.encuesta,
+    required this.preguntas,
+    required this.puedeResponder,
+    required this.dentroDeVentana,
+    required this.yaRespondio,
+    this.recibo,
+    this.fechaRespuesta,
+  });
+
+  factory EncuestaVotable.fromJson(Map<String, dynamic> json) {
+    final rawPreguntas = json['preguntas'];
+    final preguntas = rawPreguntas is List
+        ? rawPreguntas
+            .whereType<Map>()
+            .map((e) => EncuestaPregunta.fromJson(Map<String, dynamic>.from(e)))
+            .toList()
+        : <EncuestaPregunta>[];
+
+    return EncuestaVotable(
+      encuesta: Encuesta(
+        id: _entero(json['id']),
+        titulo: (json['titulo'] ?? '').toString(),
+        descripcion: (json['descripcion'] ?? '').toString(),
+        fechaInicio: json['fecha_inicio']?.toString(),
+        fechaFin: json['fecha_fin']?.toString(),
+        estado: (json['estado'] ?? '').toString(),
+        preguntas: preguntas.length,
+        opciones: 0,
+        participantes: 0,
+      ),
+      preguntas: preguntas,
+      puedeResponder: json['puede_responder'] != false,
+      dentroDeVentana: json['dentro_de_ventana'] != false,
+      yaRespondio: json['ya_respondio'] == true,
+      recibo: json['recibo']?.toString(),
+      fechaRespuesta: json['fecha_respuesta']?.toString(),
+    );
+  }
+}
+
 class EncuestaService {
   static const String baseUrl = 'https://portal.luvegi.com/api_luvegi';
 
@@ -504,7 +556,8 @@ class EncuestaService {
     return data;
   }
 
-  Future<Map<String, dynamic>> obtenerEncuestaActual({
+  /// Encuestas abiertas ahora mismo. Puede haber varias a la vez.
+  Future<List<EncuestaVotable>> obtenerEncuestasAbiertas({
     required String token,
   }) async {
     final res = await http
@@ -514,7 +567,12 @@ class EncuestaService {
     if (res.statusCode != 200) throw _handleError(res);
     final data = _decodificar(res);
     _verificarOk(data, res);
-    return data;
+
+    final raw = data['encuestas'] as List<dynamic>? ?? const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => EncuestaVotable.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
   }
 
   Future<Map<String, dynamic>> responder({

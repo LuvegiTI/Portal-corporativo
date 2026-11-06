@@ -104,18 +104,9 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
       await _cargar();
     } catch (e) {
       if (mounted) {
-        String msg = e.toString();
-        if (msg.contains('YA_HAY_ENCUESTA_ABIERTA')) {
-            msg = 'No se puede abrir otra encuesta porque ya hay una activa';
-        } else {
-          if (msg.contains(':')) {
-            final parts = msg.split(':');
-            msg = parts.last.trim();
-          }
-          if (msg.startsWith('Instance of')) {
-          msg = 'No se puede abrir otra encuesta porque ya hay una activa';
-          }
-        }
+        // Mensaje real del backend (ya no aplica el bloqueo de una sola
+        // encuesta abierta).
+        final msg = MensajeError.desdeExcepcion(e);
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(

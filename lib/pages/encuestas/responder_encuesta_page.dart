@@ -25,14 +25,14 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
   bool _enviando = false;
   String? _error;
 
-  Encuesta? _encuesta;
-  bool _puedeResponder = true;
-  bool _dentroDeVentana = true;
-  bool _yaRespondio = false;
-  String? _recibo;
-  String? _fechaRespuesta;
+  /// Encuestas abiertas. Puede haber varias a la vez y se vota en cada una.
+  List<EncuestaVotable> _encuestas = [];
 
-  final Map<int, int> _seleccion = {};
+  /// encuestaId -> (preguntaId -> opcionId)
+  final Map<int, Map<int, int>> _seleccion = {};
+
+  /// Encuesta que se esta envoyendo en este momento.
+  int? _enviandoEncuestaId;
 
   @override
   void initState() {
@@ -46,41 +46,12 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
       _error = null;
     });
     try {
-      final data = await _service.obtenerEncuestaActual(token: widget.token);
+      final lista = await _service.obtenerEncuestasAbiertas(
+        token: widget.token,
+      );
       if (!mounted) return;
-
-      final rawEncuesta = data['encuesta'];
-      Encuesta? encuesta;
-      List<EncuestaPregunta> preguntas = [];
-
-      if (rawEncuesta is Map) {
-        final map = Map<String, dynamic>.from(rawEncuesta);
-        final rawPreguntas = map['preguntas'] as List<dynamic>? ?? const [];
-        preguntas = rawPreguntas
-            .whereType()
-            .map((e) => EncuestaPregunta.fromJson(Map<String, dynamic>.from(e)))
-            .toList();
-        encuesta = Encuesta(
-          id: _asInt(map['id']),
-          titulo: (map['titulo'] ?? '').toString(),
-          descripcion: (map['descripcion'] ?? '').toString(),
-          fechaInicio: map['fecha_inicio']?.toString(),
-          fechaFin: map['fecha_fin']?.toString(),
-          estado: (map['estado'] ?? '').toString(),
-          preguntas: preguntas.length,
-          opciones: 0,
-          participantes: 0,
-        );
-        _encuestaPreguntas = preguntas;
-      }
-
       setState(() {
-        _encuesta = encuesta;
-        _puedeResponder = data['puede_responder'] == true;
-        _dentroDeVentana = data['dentro_de_ventana'] != false;
-        _yaRespondio = data['ya_respondio'] == true;
-        _recibo = data['recibo']?.toString();
-        _fechaRespuesta = data['fecha_respuesta']?.toString();
+        _encuestas = lista;
         _seleccion.clear();
       });
     } catch (e) {
@@ -91,19 +62,17 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
     }
   }
 
-  List<EncuestaPregunta> _encuestaPreguntas = [];
+  Map<int, int> _seleccionDe(int encuestaId) =>
+      _seleccion.putIfAbsent(encuestaId, () => <int, int>{});
 
-  int _asInt(dynamic value) {
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '') ?? 0;
+  bool _todasRespondidas(EncuestaVotable e) {
+    final sel = _seleccionDe(e.encuesta.id);
+    return e.preguntas.isNotEmpty &&
+        e.preguntas.every((p) => sel.containsKey(p.id));
   }
 
-  bool get _todasRespondidas =>
-      _encuestaPreguntas.isNotEmpty &&
-      _encuestaPreguntas.every((p) => _seleccion.containsKey(p.id));
-
-  Future<void> _confirmarRespuesta() async {
-    if (!_todasRespondidas) {
+  Future<void> _confirmarRespuesta(EncuestaVotable e) async {
+    if (!_todasRespondidas(e)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Selecciona una opción en cada pregunta antes de enviar.'),
@@ -134,40 +103,56 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
     );
     if (confirmado != true || !mounted) return;
 
-    setState(() => _enviando = true);
+    setState(() {
+      _enviando = true;
+      _enviandoEncuestaId = e.encuesta.id;
+    });
+
+    final sel = _seleccionDe(e.encuesta.id);
     try {
-      final respuestas = _encuestaPreguntas
+      final respuestas = e.preguntas
           .map(
             (p) => <String, dynamic>{
               'pregunta_id': p.id,
-              'opcion_id': _seleccion[p.id] == _abstencion
-                  ? null
-                  : _seleccion[p.id],
+              'opcion_id': sel[p.id] == _abstencion ? null : sel[p.id],
             },
           )
           .toList();
 
       final res = await _service.responder(
         token: widget.token,
-        encuestaId: _encuesta!.id,
+        encuestaId: e.encuesta.id,
         respuestas: respuestas,
       );
       if (!mounted) return;
-      setState(() {
-        _yaRespondio = true;
-        _recibo = res['recibo']?.toString() ?? _recibo;
-      });
+
+      await _cargar();
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tu respuesta fue registrada correctamente.')),
+        SnackBar(
+          content: Text(
+            res['recibo']?.toString() != null
+                ? 'Respuesta registrada. Comprobante: ${res['recibo']}'
+                : 'Tu respuesta fue registrada correctamente.',
+          ),
+        ),
       );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(MensajeError.desdeExcepcion(e))),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(MensajeError.desdeExcepcion(e)),
+          backgroundColor: LuvegiColors.error,
+        ),
+      );
     } finally {
-      if (mounted) setState(() => _enviando = false);
+      if (mounted) {
+        setState(() {
+          _enviando = false;
+          _enviandoEncuestaId = null;
+        });
+      }
     }
   }
 
@@ -204,6 +189,7 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
         child: Center(child: CircularProgressIndicator()),
       );
     }
+
     if (_error != null) {
       return _card(
         child: Column(
@@ -221,12 +207,13 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
         ),
       );
     }
-    if (_encuesta == null) {
+
+    if (_encuestas.isEmpty) {
       return _card(
         child: Column(
           children: [
             const Icon(
-              Icons.how_to_vote_outlined,
+              Icons.assignment_outlined,
               size: 48,
               color: LuvegiColors.textHint,
             ),
@@ -242,130 +229,169 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
         ),
       );
     }
-    if (_yaRespondio) {
-      return _card(
-        child: Column(
-          children: [
-            const Icon(
-              Icons.verified_outlined,
-              size: 52,
-              color: LuvegiColors.success,
-            ),
-            const SizedBox(height: LuvegiSpacing.md),
-            Text('¡Gracias por participar!', style: LuvegiText.title),
-            const SizedBox(height: LuvegiSpacing.xs),
-            Text(
-              'Tu respuesta quedó registrada de forma anónima.',
-              textAlign: TextAlign.center,
-              style: LuvegiText.bodySecondary,
-            ),
-            if (_recibo != null && _recibo!.isNotEmpty) ...[
-              const SizedBox(height: LuvegiSpacing.md),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: LuvegiColors.surfaceHover,
-                  borderRadius: BorderRadius.circular(LuvegiRadius.sm),
-                  border: Border.all(color: LuvegiColors.border),
-                ),
-                child: Text(
-                  'Comprobante: $_recibo',
-                  style: LuvegiText.body.copyWith(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ],
-            if (_fechaRespuesta != null && _fechaRespuesta!.isNotEmpty) ...[
-              const SizedBox(height: LuvegiSpacing.xs),
-              Text(
-                'Registrado el ${_fecha(DateTime.tryParse(_fechaRespuesta!))}',
-                style: LuvegiText.caption,
-              ),
-            ],
-          ],
-        ),
-      );
-    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _card(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.how_to_vote_outlined,
-                    color: LuvegiColors.secondary,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(_encuesta!.titulo, style: LuvegiText.title),
-                  ),
-                ],
-              ),
-              if (_encuesta!.descripcion.isNotEmpty) ...[
-                const SizedBox(height: LuvegiSpacing.sm),
-                Text(_encuesta!.descripcion, style: LuvegiText.bodySecondary),
-              ],
-              const SizedBox(height: LuvegiSpacing.sm),
-              Text(
-                'Encuesta abierta'
-                '${_encuesta!.fechaFin != null ? ' · cierra ${_encuesta!.fechaFin}' : ''}',
-                style: LuvegiText.caption,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: LuvegiSpacing.lg),
-        if (!_puedeResponder)
-          _aviso('No tienes permiso para participar en esta encuesta.')
-        else if (!_dentroDeVentana)
-          _aviso('La encuesta no está dentro del periodo habilitado.')
-        else ...[
-          ..._encuestaPreguntas.map(_buildPregunta),
-          const SizedBox(height: LuvegiSpacing.md),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _enviando ? null : _confirmarRespuesta,
-              icon: _enviando
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.send),
-              label: Text(_enviando ? 'Enviando...' : 'Enviar respuesta'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: LuvegiColors.secondary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-            ),
-          ),
-          const SizedBox(height: LuvegiSpacing.sm),
+        if (_encuestas.length > 1) ...[
           Text(
-            'Tu respuesta es secreta: RRHH solo verá que participaste, nunca tu selección.',
-            style: LuvegiText.caption,
+            'Encuestas disponibles',
+            style: LuvegiText.title.copyWith(fontSize: 18),
           ),
+          const SizedBox(height: LuvegiSpacing.xs),
+          Text(
+            'Tienes ${_encuestas.length} encuestas abiertas. Puedes responder en todas.',
+            style: LuvegiText.bodySecondary,
+          ),
+          const SizedBox(height: LuvegiSpacing.lg),
         ],
+        ..._encuestas.map(_buildEncuesta),
       ],
     );
   }
 
-  Widget _buildPregunta(EncuestaPregunta pregunta) {
+  Widget _buildEncuesta(EncuestaVotable e) {
+    final sel = _seleccionDe(e.encuesta.id);
+    final enviandoEsta = _enviando && _enviandoEncuestaId == e.encuesta.id;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: LuvegiSpacing.xl),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _card(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.assignment_outlined,
+                      color: LuvegiColors.secondary,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(e.encuesta.titulo, style: LuvegiText.title),
+                    ),
+                  ],
+                ),
+                if (e.encuesta.descripcion.isNotEmpty) ...[
+                  const SizedBox(height: LuvegiSpacing.sm),
+                  Text(e.encuesta.descripcion, style: LuvegiText.bodySecondary),
+                ],
+                const SizedBox(height: LuvegiSpacing.sm),
+                Text(
+                  'Encuesta abierta'
+                  '${e.encuesta.fechaFin != null ? ' · cierra ${e.encuesta.fechaFin}' : ''}',
+                  style: LuvegiText.caption,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: LuvegiSpacing.lg),
+          if (e.yaRespondio)
+            _buildGracias(e)
+          else if (!e.puedeResponder)
+            _aviso('No tienes permiso para participar en esta encuesta.')
+          else if (!e.dentroDeVentana)
+            _aviso('La encuesta no está dentro del periodo habilitado.')
+          else ...[
+            ...e.preguntas.map((p) => _buildPregunta(e, p, sel)),
+            const SizedBox(height: LuvegiSpacing.md),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: (_enviando || !_todasRespondidas(e))
+                    ? null
+                    : () => _confirmarRespuesta(e),
+                icon: enviandoEsta
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.send),
+                label: Text(
+                  enviandoEsta ? 'Enviando...' : 'Enviar respuesta',
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: LuvegiColors.secondary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+            ),
+            const SizedBox(height: LuvegiSpacing.sm),
+            Text(
+              'Tu respuesta es secreta: RRHH solo verá que participaste, nunca tu selección.',
+              style: LuvegiText.caption,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGracias(EncuestaVotable e) {
+    return _card(
+      child: Column(
+        children: [
+          const Icon(
+            Icons.verified_outlined,
+            size: 52,
+            color: LuvegiColors.success,
+          ),
+          const SizedBox(height: LuvegiSpacing.md),
+          Text('¡Gracias por participar!', style: LuvegiText.title),
+          const SizedBox(height: LuvegiSpacing.xs),
+          Text(
+            'Tu respuesta quedó registrada de forma anónima.',
+            textAlign: TextAlign.center,
+            style: LuvegiText.bodySecondary,
+          ),
+          if (e.recibo != null && e.recibo!.isNotEmpty) ...[
+            const SizedBox(height: LuvegiSpacing.md),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 8,
+              ),
+              decoration: BoxDecoration(
+                color: LuvegiColors.surfaceHover,
+                borderRadius: BorderRadius.circular(LuvegiRadius.sm),
+                border: Border.all(color: LuvegiColors.border),
+              ),
+              child: Text(
+                'Comprobante: ${e.recibo}',
+                style: LuvegiText.body.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+          if (e.fechaRespuesta != null && e.fechaRespuesta!.isNotEmpty) ...[
+            const SizedBox(height: LuvegiSpacing.xs),
+            Text(
+              'Registrado el ${_fecha(DateTime.tryParse(e.fechaRespuesta!))}',
+              style: LuvegiText.caption,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPregunta(
+    EncuestaVotable e,
+    EncuestaPregunta pregunta,
+    Map<int, int> sel,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: LuvegiSpacing.lg),
       child: _card(
         child: RadioGroup<int>(
-          groupValue: _seleccion[pregunta.id],
-          onChanged: (v) =>
-              setState(() => _seleccion[pregunta.id] = v ?? _abstencion),
+          groupValue: sel[pregunta.id],
+          onChanged: (v) => setState(
+            () => _seleccionDe(e.encuesta.id)[pregunta.id] = v ?? _abstencion,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -384,7 +410,9 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
                   style: LuvegiText.caption,
                 )
               else
-                ...pregunta.opciones.map((c) => _buildOpcion(pregunta, c)),
+                ...pregunta.opciones.map(
+                  (c) => _buildOpcion(e, pregunta, c, sel),
+                ),
               RadioListTile<int>(
                 value: _abstencion,
                 contentPadding: EdgeInsets.zero,
@@ -400,8 +428,14 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
     );
   }
 
-  Widget _buildOpcion(EncuestaPregunta pregunta, EncuestaOpcion opcion) {
-    final seleccionado = _seleccion[pregunta.id] == opcion.id;
+  Widget _buildOpcion(
+    EncuestaVotable e,
+    EncuestaPregunta pregunta,
+    EncuestaOpcion opcion,
+    Map<int, int> sel,
+  ) {
+    final seleccionado = sel[pregunta.id] == opcion.id;
+
     return Container(
       margin: const EdgeInsets.only(bottom: LuvegiSpacing.sm),
       child: Material(
@@ -463,6 +497,7 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
     );
   }
 
+  /// Encuesta a la que pertenece una pregunta (para leer su seleccion).
   Widget _aviso(String texto) => _card(
     child: Row(
       children: [
