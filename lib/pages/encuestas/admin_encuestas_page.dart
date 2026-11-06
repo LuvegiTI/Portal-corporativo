@@ -645,6 +645,10 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
 
     final filtroCtrl = TextEditingController();
 
+    // Ancho fijo de la lista (el AlertDialog pide el ancho intrinseco del
+    // contenido y un viewport sin ancho fijo revienta).
+    final anchoLista = (MediaQuery.of(context).size.width - 96).clamp(240.0, 420.0);
+
     final resultado = await showDialog<List<int>>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -706,10 +710,12 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
                     ],
                   ),
                   const Divider(height: 1),
-                  // Altura explicita: un ListView dentro de una Column sin
-                  // altura acotada lanza "RenderViewport does not support
-                  // returning intrinsic dimensions".
+                  // Alto Y ancho explicitos: el AlertDialog calcula el ancho
+                  // intrinseco de su contenido, y un ListView sin ancho fijo
+                  // lanza "RenderViewport does not support returning
+                  // intrinsic dimensions".
                   SizedBox(
+                    width: anchoLista,
                     height:
                         (MediaQuery.of(ctx).size.height * 0.42).clamp(180.0, 360.0),
                     child: ListView.builder(
