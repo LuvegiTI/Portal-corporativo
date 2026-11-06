@@ -24,6 +24,7 @@ class AdminUsuariosPage extends StatefulWidget {
 class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
   bool _cargando = true;
   bool _sincronizandoDni = false;
+  bool _sincronizandoCesados = false;
   bool _buscandoDni = false;
   Map<String, dynamic>? _dniEncontrado;
   Timer? _debounceDni;
@@ -169,6 +170,223 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
       nombreCtrl.text = (data['nombre'] ?? '').toString();
     }
     return data;
+  }
+
+  /// Sincroniza con Odoo los usuarios que tienen la etiqueta "Cesado" y da
+  /// de baja en el portal a los que corresponden. Primero muestra una vista
+  /// previa: nada se da de baja hasta que se confirma.
+  Future<void> _sincronizarCesados() async {
+    setState(() => _sincronizandoCesados = true);
+    Map<String, dynamic>? vista;
+    try {
+      final url = Uri.parse(
+        '$_baseUrl/admin_usuarios.php?action=sincronizar_cesados',
+      );
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Content-Type': 'application/json',
+        },
+      );
+      final body = json.decode(response.body);
+      if (!mounted) return;
+
+      if (response.statusCode != 200 || body['ok'] != true) {
+        final mensaje = body['mensaje']?.toString() ??
+            MensajeError.desdeCodigo(body['error']?.toString());
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(mensaje), backgroundColor: LuvegiColors.error),
+        );
+        return;
+      }
+      vista = Map<String, dynamic>.from(body);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(MensajeError.desdeExcepcion(e)),
+          backgroundColor: LuvegiColors.error,
+        ),
+      );
+      return;
+    } finally {
+      if (mounted) setState(() => _sincronizandoCesados = false);
+    }
+
+    final aBaja = (vista!['a_baja'] as List?) ?? const [];
+    final sinCruce = (vista['sin_cruce'] as List?) ?? const [];
+    final yaBaja = (vista['ya_baja'] as List?) ?? const [];
+    final totalOdoo = (vista['cesados_odoo'] as num?)?.toInt() ?? 0;
+
+    if (!mounted) return;
+    final aplicar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sincronizar cesados con Odoo'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Odoo tiene $totalOdoo empleado(s) con la etiqueta "Cesado".',
+                  style: LuvegiText.body,
+                ),
+                const SizedBox(height: 12),
+                if (aBaja.isEmpty)
+                  Text(
+                    'No hay usuarios del portal por dar de baja.',
+                    style: LuvegiText.bodySecondary,
+                  )
+                else ...[
+                  Text(
+                    'Se dará de baja:',
+                    style: LuvegiText.body.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  ...aBaja.map(
+                    (x) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.person_off_outlined,
+                            size: 18,
+                            color: LuvegiColors.error,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  (x['usuario'] ?? '').toString(),
+                                  style: LuvegiText.body.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Text(
+                                  '${(x['correo'] ?? '').toString()} · '
+                                  'Odoo: ${(x['empleado'] ?? '').toString()} · '
+                                  'por ${(x['emparejado_por'] ?? '').toString()}',
+                                  style: LuvegiText.caption,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+                if (yaBaja.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Ya estaban de baja: ${yaBaja.length}',
+                    style: LuvegiText.caption,
+                  ),
+                ],
+                if (sinCruce.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Sin coincidencia en el portal: ${sinCruce.length}',
+                    style: LuvegiText.caption.copyWith(
+                      color: LuvegiColors.error,
+                    ),
+                  ),
+                  ...sinCruce.map(
+                    (x) => Text(
+                      '· ${(x['empleado'] ?? '').toString()}'
+                      '${(x['dni'] ?? '').toString().isEmpty ? '' : ' (DNI ${(x['dni'])})'}',
+                      style: LuvegiText.caption,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Text(
+                  'La baja es efectiva de inmediato: al invalidar el usuario, '
+                  'su sesión deja de servir en la siguiente petición.',
+                  style: LuvegiText.caption,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: aBaja.isEmpty ? null : () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: LuvegiColors.error,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(
+              aBaja.isEmpty
+                  ? 'Nada que dar de baja'
+                  : 'Dar de baja (${aBaja.length})',
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (aplicar != true || !mounted) return;
+
+    setState(() => _sincronizandoCesados = true);
+    try {
+      final url = Uri.parse(
+        '$_baseUrl/admin_usuarios.php?action=sincronizar_cesados',
+      );
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({'aplicar': 1}),
+      );
+      final body = json.decode(response.body);
+      if (!mounted) return;
+
+      if (response.statusCode == 200 && body['ok'] == true) {
+        final dados = (body['dados_de_baja'] as num?)?.toInt() ?? 0;
+        await _cargarDatos();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              dados == 0
+                  ? 'No había usuarios por dar de baja.'
+                  : '$dados usuario(s) dado(s) de baja.',
+            ),
+            backgroundColor: LuvegiColors.success,
+          ),
+        );
+      } else {
+        final mensaje = body['mensaje']?.toString() ??
+            MensajeError.desdeCodigo(body['error']?.toString());
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(mensaje), backgroundColor: LuvegiColors.error),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(MensajeError.desdeExcepcion(e)),
+          backgroundColor: LuvegiColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _sincronizandoCesados = false);
+    }
   }
 
   Future<void> _guardarAccesosUsuario({
@@ -1211,6 +1429,27 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                       tooltip: 'Actualizar',
                     ),
                     const SizedBox(width: 4),
+                    OutlinedButton.icon(
+                      onPressed: _sincronizandoCesados
+                          ? null
+                          : _sincronizarCesados,
+                      icon: _sincronizandoCesados
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.person_off_outlined, size: 18),
+                      label: Text(
+                        _sincronizandoCesados
+                            ? 'Sincronizando...'
+                            : 'Cesados (Odoo)',
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: LuvegiColors.secondary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     OutlinedButton.icon(
                       onPressed: _sincronizandoDni ? null : _sincronizarDni,
                       icon: _sincronizandoDni
