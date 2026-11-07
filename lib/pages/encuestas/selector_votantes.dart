@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../services/encuesta_service.dart';
 import '../../theme/luvegi_colors.dart';
 import '../../theme/luvegi_radius.dart';
-import '../../theme/luvegi_spacing.dart';
 import '../../theme/luvegi_text.dart';
 
 /// Resumen de quien puede votar en una encuesta.

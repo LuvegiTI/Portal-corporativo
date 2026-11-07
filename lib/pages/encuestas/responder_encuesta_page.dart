@@ -445,11 +445,169 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
                   style: LuvegiText.body.copyWith(fontStyle: FontStyle.italic),
                 ),
               ),
+              const Divider(height: 20),
+              _buildBotonPostularme(e, pregunta),
             ],
           ),
         ),
       ),
     );
+  }
+
+  /// Boton para postularse como candidato de esta pregunta (o para retirar
+  /// la postulacion si ya se postulo).
+  Widget _buildBotonPostularme(EncuestaVotable e, EncuestaPregunta pregunta) {
+    final miOpcion = e.misPostulaciones[pregunta.id];
+
+    if (miOpcion != null) {
+      return Row(
+        children: [
+          const Icon(
+            Icons.how_to_reg,
+            size: 16,
+            color: LuvegiColors.success,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'Te postulaste como candidato',
+              style: LuvegiText.caption.copyWith(
+                color: LuvegiColors.success,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: _enviando
+                ? null
+                : () => _retirarPostulacion(e, miOpcion),
+            style: TextButton.styleFrom(
+              foregroundColor: LuvegiColors.textSecondary,
+              visualDensity: VisualDensity.compact,
+            ),
+            child: const Text('Retirar'),
+          ),
+        ],
+      );
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _enviando || !e.puedeResponder
+            ? null
+            : () => _postularse(e, pregunta),
+        icon: const Icon(Icons.how_to_reg_outlined, size: 18),
+        label: const Text('Postularme como candidato'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: LuvegiColors.secondary,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+        ),
+      ),
+    );
+  }
+
+  /// Dialogo para escribir la propuesta yifficulty la postulacion.
+  Future<void> _postularse(EncuestaVotable e, EncuestaPregunta pregunta) async {
+    final ctrl = TextEditingController();
+
+    final propuesta = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Postularme'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Te anotaremos como candidato en: "${pregunta.nombre}". '
+                'Tus datos (nombre, area y foto) se toman de tu perfil.',
+                style: LuvegiText.caption,
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                minLines: 3,
+                maxLines: 5,
+                maxLength: 2000,
+                decoration: const InputDecoration(
+                  labelText: 'Tu propuesta (opcional)',
+                  hintText: 'Explica brevemente por qué te postulas',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('Postularme'),
+          ),
+        ],
+      ),
+    );
+
+    ctrl.dispose();
+    if (propuesta == null || !mounted) return;
+
+    setState(() => _enviando = true);
+    try {
+      await _service.postular(
+        token: widget.token,
+        encuestaId: e.encuesta.id,
+        preguntaId: pregunta.id,
+        propuesta: propuesta,
+      );
+      if (!mounted) return;
+      await _cargar();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tu postulación quedó registrada.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(MensajeError.desdeExcepcion(e)),
+          backgroundColor: LuvegiColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
+  }
+
+  Future<void> _retirarPostulacion(EncuestaVotable e, int opcionId) async {
+    setState(() => _enviando = true);
+    try {
+      await _service.retirarPostulacion(
+        token: widget.token,
+        opcionId: opcionId,
+      );
+      if (!mounted) return;
+      await _cargar();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tu postulación se retiró.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(MensajeError.desdeExcepcion(e)),
+          backgroundColor: LuvegiColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
   }
 
   Widget _buildOpcion(
@@ -475,6 +633,12 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
         clipBehavior: Clip.antiAlias,
         child: RadioListTile<int>(
           value: opcion.id,
+          // Nadie puede votarse a si mismo.
+          onChanged: opcion.esMia
+              ? null
+              : (v) => setState(
+                    () => sel[pregunta.id] = v ?? _abstencion,
+                  ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 8),
           secondary: CircleAvatar(
             backgroundColor: LuvegiColors.secondary.withValues(alpha: 0.12),

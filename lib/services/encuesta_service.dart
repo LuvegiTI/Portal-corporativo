@@ -79,7 +79,6 @@ class EncuestaPregunta {
     required this.orden,
     required this.opciones,
   });
-
   factory EncuestaPregunta.fromJson(Map<String, dynamic> json) {
     final rawOpciones = json['opciones'] as List<dynamic>? ?? const [];
     return EncuestaPregunta(
@@ -106,6 +105,8 @@ class EncuestaOpcion {
   final int orden;
   final bool activo;
   final int? usuarioId;
+  /// True si esta opcion es la postulacion del usuario en sesion.
+  final bool esMia;
 
   const EncuestaOpcion({
     required this.id,
@@ -117,6 +118,7 @@ class EncuestaOpcion {
     required this.orden,
     required this.activo,
     this.usuarioId,
+    this.esMia = false,
   });
 
   factory EncuestaOpcion.fromJson(Map<String, dynamic> json) {
@@ -132,6 +134,7 @@ class EncuestaOpcion {
       activo: json['activo'] == 1 || json['activo'] == true,
       usuarioId:
           usuarioId == null ? null : (usuarioId is num ? usuarioId.toInt() : int.tryParse('$usuarioId')),
+      esMia: json['es_mia'] == true,
     );
   }
 }
@@ -195,6 +198,8 @@ class EncuestaVotable {
   final bool restringida;
   final String? recibo;
   final String? fechaRespuesta;
+  /// preguntaId -> id de la opcion con la que el usuario se postulo.
+  final Map<int, int> misPostulaciones;
 
   const EncuestaVotable({
     required this.encuesta,
@@ -205,6 +210,7 @@ class EncuestaVotable {
     this.restringida = false,
     this.recibo,
     this.fechaRespuesta,
+    this.misPostulaciones = const {},
   });
 
   factory EncuestaVotable.fromJson(Map<String, dynamic> json) {
@@ -233,10 +239,22 @@ class EncuestaVotable {
       dentroDeVentana: json['dentro_de_ventana'] != false,
       yaRespondio: json['ya_respondio'] == true,
       restringida: json['restringida'] == true,
+      misPostulaciones: _mapaPostulaciones(json['mis_postulaciones']),
       recibo: json['recibo']?.toString(),
       fechaRespuesta: json['fecha_respuesta']?.toString(),
     );
   }
+}
+
+Map<int, int> _mapaPostulaciones(dynamic raw) {
+  if (raw is! Map) return const {};
+  final salida = <int, int>{};
+  raw.forEach((k, v) {
+    final clave = int.tryParse('$k');
+    final valor = v is num ? v.toInt() : int.tryParse('$v');
+    if (clave != null && valor != null) salida[clave] = valor;
+  });
+  return salida;
 }
 
 class EncuestaService {
@@ -612,6 +630,51 @@ class EncuestaService {
         .get(
           Uri.parse('$_adminUrl?action=votantes&encuesta_id=$encuestaId'),
           headers: _headers(token),
+        )
+        .timeout(_timeout);
+
+    if (res.statusCode != 200) throw _handleError(res);
+    final data = _decodificar(res);
+    _verificarOk(data, res);
+    return data;
+  }
+
+  /// Postula al usuario actual como candidato de una pregunta.
+  /// Sus datos (nombre, area y foto) se toman del portal y de Odoo.
+  Future<Map<String, dynamic>> postular({
+    required String token,
+    required int encuestaId,
+    required int preguntaId,
+    String propuesta = '',
+  }) async {
+    final res = await http
+        .post(
+          Uri.parse('$_userUrl?action=postular'),
+          headers: _headers(token),
+          body: jsonEncode({
+            'encuesta_id': encuestaId,
+            'pregunta_id': preguntaId,
+            'propuesta': propuesta,
+          }),
+        )
+        .timeout(_timeout);
+
+    if (res.statusCode != 200 && res.statusCode != 201) throw _handleError(res);
+    final data = _decodificar(res);
+    _verificarOk(data, res);
+    return data;
+  }
+
+  /// Retira la postulacion del usuario actual.
+  Future<Map<String, dynamic>> retirarPostulacion({
+    required String token,
+    required int opcionId,
+  }) async {
+    final res = await http
+        .post(
+          Uri.parse('$_userUrl?action=retirar_postulacion'),
+          headers: _headers(token),
+          body: jsonEncode({'opcion_id': opcionId}),
         )
         .timeout(_timeout);
 
