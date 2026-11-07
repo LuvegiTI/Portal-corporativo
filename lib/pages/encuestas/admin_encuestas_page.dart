@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/encuesta_service.dart';
+import 'selector_votantes.dart';
 import '../../theme/luvegi_colors.dart';
 import '../../theme/luvegi_radius.dart';
 import '../../theme/luvegi_spacing.dart';
@@ -66,7 +67,12 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
   }
 
   Future<void> _editar(Encuesta encuesta) async {
-    final resultado = await _editarEncuestaDialog(context, encuesta: encuesta);
+    final resultado = await _editarEncuestaDialog(
+      context,
+      encuesta: encuesta,
+      service: _service,
+      token: widget.token,
+    );
     if (resultado == null) return;
     try {
       await _service.actualizar(
@@ -477,9 +483,101 @@ class _EncuestaForm {
   });
 }
 
+/// Fila compacta para elegir el personal que puede votar.
+Widget _filaVotantes(
+  BuildContext context,
+  EncuestaService service,
+  String token,
+  int encuestaId,
+) {
+  return InkWell(
+    onTap: () => _abrirSelectorDesdeFormulario(context, service, token, encuestaId),
+    borderRadius: BorderRadius.circular(LuvegiRadius.sm),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: LuvegiColors.menuHover,
+        borderRadius: BorderRadius.circular(LuvegiRadius.sm),
+        border: Border.all(color: LuvegiColors.menuSelected),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.how_to_vote_outlined,
+            size: 18,
+            color: LuvegiColors.secondary,
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'Personal que puede votar',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+          ),
+          const Icon(
+            Icons.chevron_right_rounded,
+            size: 18,
+            color: LuvegiColors.textSecondary,
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Abre el selector desde el formulario y guarda el resultado.
+Future<void> _abrirSelectorDesdeFormulario(
+  BuildContext context,
+  EncuestaService service,
+  String token,
+  int encuestaId,
+) async {
+  final resultado = await mostrarSelectorVotantes(
+    context: context,
+    service: service,
+    token: token,
+    encuestaId: encuestaId,
+  );
+  if (resultado == null) return;
+
+  try {
+    await service.guardarVotantes(
+      token: token,
+      encuestaId: encuestaId,
+      usuarioIds: resultado,
+    );
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            resultado.isEmpty
+                ? 'Encuesta abierta a todo el personal con permiso.'
+                : '${resultado.length} persona(s) habilitadas para votar.',
+          ),
+        ),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(MensajeError.desdeExcepcion(e)),
+          backgroundColor: LuvegiColors.error,
+        ),
+      );
+    }
+  }
+}
+
 Future<_EncuestaForm?> _editarEncuestaDialog(
   BuildContext context, {
   Encuesta? encuesta,
+  EncuestaService? service,
+  String? token,
 }) async {
   final tituloCtrl = TextEditingController(text: encuesta?.titulo ?? '');
   final descCtrl = TextEditingController(text: encuesta?.descripcion ?? '');
@@ -519,6 +617,28 @@ Future<_EncuestaForm?> _editarEncuestaDialog(
                 ],
                 decoration: const InputDecoration(labelText: 'Descripción'),
               ),
+              const SizedBox(height: LuvegiSpacing.md),
+              // Quien puede votar. En una encuesta nueva todavia no existe
+              // el id, asi que se configura al editarla.
+              if (encuesta != null && service != null && token != null)
+                _filaVotantes(context, service, token, encuesta.id)
+              else
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.how_to_vote_outlined,
+                      size: 16,
+                      color: LuvegiColors.secondary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Podras elegir quien puede votar al editar la encuesta.',
+                        style: LuvegiText.caption,
+                      ),
+                    ),
+                  ],
+                ),
               // Las fechas de inicio y cierre no se capturan: el periodo se
               // maneja desde el backend. Los controladores se conservan para
               // no borrar las fechas que ya tuviera la encuesta.
@@ -609,250 +729,15 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
     }
   }
 
-  /// Dialogo para elegir el personal que puede votar en esta encuesta.
+  /// Abre el selector de personal que puede votar (dialogo compartido con
+  /// el formulario de alta de encuesta).
   Future<void> _abrirSelectorVotantes() async {
-    setState(() => _cargandoVotantes = true);
-
-    List<Map<String, dynamic>> personas = [];
-    try {
-      final data = await widget.service.listarVotantes(
-        token: widget.token,
-        encuestaId: widget.encuesta.id,
-      );
-      final raw = data['usuarios'] as List<dynamic>? ?? const [];
-      personas = raw
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _cargandoVotantes = false);
-      _aviso(MensajeError.desdeExcepcion(e), error: true);
-      return;
-    }
-    if (!mounted) return;
-    setState(() => _cargandoVotantes = false);
-
-    if (personas.isEmpty) {
-      _aviso('No hay usuarios activos para mostrar.');
-      return;
-    }
-
-    final seleccionados = <int>{
-      for (final p in personas)
-        if (p['votante'] == true) (p['id'] as num).toInt(),
-    };
-
-    final filtroCtrl = TextEditingController();
-
-    // Ancho fijo de la lista (el AlertDialog pide el ancho intrinseco del
-    // contenido y un viewport sin ancho fijo revienta).
-    final anchoLista = (MediaQuery.of(context).size.width - 96).clamp(240.0, 420.0);
-
-    final resultado = await showDialog<List<int>>(
+    final resultado = await mostrarSelectorVotantes(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          final q = filtroCtrl.text.trim().toLowerCase();
-          final filtrados = q.isEmpty
-              ? personas
-              : personas.where((p) {
-                  final n = (p['nombre'] ?? '').toString().toLowerCase();
-                  final c = (p['correo'] ?? '').toString().toLowerCase();
-                  final a = (p['areas'] ?? '').toString().toLowerCase();
-                  final r = (p['rol_nombre'] ?? '').toString().toLowerCase();
-                  return n.contains(q) ||
-                      c.contains(q) ||
-                      a.contains(q) ||
-                      r.contains(q);
-                }).toList();
-
-          // Agrupar por area: con ~150 personas, una lista plana es
-          // ilegible.
-          final grupos = <String, List<Map<String, dynamic>>>{};
-          for (final p in filtrados) {
-            final area = (p['areas'] ?? '').toString().trim();
-            final clave = area.isEmpty ? 'Sin area asignada' : area;
-            grupos.putIfAbsent(clave, () => <Map<String, dynamic>>[]).add(p);
-          }
-          final claves = grupos.keys.toList()..sort();
-
-          return AlertDialog(
-            title: const Text('Personal que puede votar'),
-            content: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 460, maxHeight: 620),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Si no seleccionas a nadie, la encuesta queda abierta a '
-                    'todo el personal con permiso de votar.',
-                    style: LuvegiText.caption,
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: filtroCtrl,
-                    autofocus: true,
-                    onChanged: (_) => setDialogState(() {}),
-                    decoration: const InputDecoration(
-                      labelText: 'Buscar por nombre, correo, area o rol',
-                      prefixIcon: Icon(Icons.search),
-                      isDense: true,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      TextButton(
-                        onPressed: () => setDialogState(() {
-                          seleccionados
-                            ..clear()
-                            ..addAll(filtrados.map((p) => (p['id'] as num).toInt()));
-                        }),
-                        child: const Text('Marcar los visibles'),
-                      ),
-                      TextButton(
-                        onPressed: () => setDialogState(() => seleccionados.clear()),
-                        child: const Text('Quitar todos'),
-                      ),
-                      const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: LuvegiColors.menuHover,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '${seleccionados.length} de ${personas.length}',
-                          style: LuvegiText.caption.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: LuvegiColors.secondary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 1),
-                  // Alto Y ancho explicitos: el AlertDialog calcula el ancho
-                  // intrinseco de su contenido, y un ListView sin ancho fijo
-                  // lanza "RenderViewport does not support returning
-                  // intrinsic dimensions".
-                  SizedBox(
-                    width: anchoLista,
-                    height:
-                        (MediaQuery.of(ctx).size.height * 0.42).clamp(180.0, 360.0),
-                    child: ListView.builder(
-                      itemCount: claves.length,
-                      itemBuilder: (_, i) {
-                        final clave = claves[i];
-                        final miembros = grupos[clave]!;
-                        final ids = miembros
-                            .map((p) => (p['id'] as num).toInt())
-                            .toList();
-                        final todos = ids.every((id) => seleccionados.contains(id));
-
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
-                              color: LuvegiColors.surfaceHover,
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      '$clave (${miembros.length})',
-                                      style: LuvegiText.caption.copyWith(
-                                        fontWeight: FontWeight.w800,
-                                        color: LuvegiColors.textPrimary,
-                                      ),
-                                    ),
-                                  ),
-                                  InkWell(
-                                    onTap: () => setDialogState(() {
-                                      if (todos) {
-                                        for (final id in ids) {
-                                          seleccionados.remove(id);
-                                        }
-                                      } else {
-                                        seleccionados.addAll(ids);
-                                      }
-                                    }),
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 2,
-                                      ),
-                                      child: Text(
-                                        todos ? 'Quitar todos' : 'Marcar todos',
-                                        style: LuvegiText.caption.copyWith(
-                                          fontWeight: FontWeight.w700,
-                                          color: LuvegiColors.secondary,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            ...miembros.map(
-                              (p) => CheckboxListTile(
-                                dense: true,
-                                visualDensity: VisualDensity.compact,
-                                value: seleccionados.contains((p['id'] as num).toInt()),
-                                onChanged: (v) => setDialogState(() {
-                                  final id = (p['id'] as num).toInt();
-                                  if (v == true) {
-                                    seleccionados.add(id);
-                                  } else {
-                                    seleccionados.remove(id);
-                                  }
-                                }),
-                                title: Text(
-                                  (p['nombre'] ?? '').toString(),
-                                  style: LuvegiText.body.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13.5,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  (p['correo'] ?? '').toString(),
-                                  style: LuvegiText.caption.copyWith(fontSize: 11),
-                                ),
-                                controlAffinity:
-                                    ListTileControlAffinity.leading,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancelar'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, seleccionados.toList()),
-                child: const Text('Guardar'),
-              ),
-            ],
-          );
-        },
-      ),
+      service: widget.service,
+      token: widget.token,
+      encuestaId: widget.encuesta.id,
     );
-
-    filtroCtrl.dispose();
     if (resultado == null || !mounted) return;
 
     try {
@@ -864,9 +749,7 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
       if (!mounted) return;
       await _cargarVotantes();
       if (!mounted) return;
-      _aviso(
-        (data['message'] ?? 'Personal actualizado.').toString(),
-      );
+      _aviso((data['message'] ?? 'Personal actualizado.').toString());
     } catch (e) {
       if (!mounted) return;
       _aviso(MensajeError.desdeExcepcion(e), error: true);
