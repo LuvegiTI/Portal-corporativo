@@ -6,6 +6,7 @@ import '../../theme/luvegi_radius.dart';
 import '../../theme/luvegi_spacing.dart';
 import '../../theme/luvegi_text.dart';
 import '../../utils/mensaje_error.dart';
+import 'dialogo_postular.dart';
 
 class ResponderEncuestaPage extends StatefulWidget {
   final String token;
@@ -491,6 +492,35 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
       );
     }
 
+    if (!e.cumpleRequisitos) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.lock_outline,
+                size: 15,
+                color: LuvegiColors.error,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'No cumples los requisitos para postularte',
+                  style: LuvegiText.caption.copyWith(
+                    color: LuvegiColors.error,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          tarjetaRequisitos(e.requisitos),
+        ],
+      );
+    }
+
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton.icon(
@@ -507,81 +537,17 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
     );
   }
 
-  /// Dialogo para escribir la propuesta yifficulty la postulacion.
+  /// Abre el dialogo de postulacion (compartido con el menu Postulaciones).
   Future<void> _postularse(EncuestaVotable e, EncuestaPregunta pregunta) async {
-    final ctrl = TextEditingController();
-
-    final propuesta = await showDialog<String>(
+    final ok = await mostrarDialogoPostular(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Postularme'),
-        content: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 400),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Te anotaremos como candidato en: "${pregunta.nombre}". '
-                'Tus datos (nombre, area y foto) se toman de tu perfil.',
-                style: LuvegiText.caption,
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: ctrl,
-                autofocus: true,
-                minLines: 3,
-                maxLines: 5,
-                maxLength: 2000,
-                decoration: const InputDecoration(
-                  labelText: 'Tu propuesta (opcional)',
-                  hintText: 'Explica brevemente por qué te postulas',
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('Postularme'),
-          ),
-        ],
-      ),
+      service: _service,
+      token: widget.token,
+      encuestaId: e.encuesta.id,
+      pregunta: pregunta,
     );
-
-    ctrl.dispose();
-    if (propuesta == null || !mounted) return;
-
-    setState(() => _enviando = true);
-    try {
-      await _service.postular(
-        token: widget.token,
-        encuestaId: e.encuesta.id,
-        preguntaId: pregunta.id,
-        propuesta: propuesta,
-      );
-      if (!mounted) return;
-      await _cargar();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tu postulación quedó registrada.')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(MensajeError.desdeExcepcion(e)),
-          backgroundColor: LuvegiColors.error,
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _enviando = false);
-    }
+    if (!ok || !mounted) return;
+    await _cargar();
   }
 
   Future<void> _retirarPostulacion(EncuestaVotable e, int opcionId) async {

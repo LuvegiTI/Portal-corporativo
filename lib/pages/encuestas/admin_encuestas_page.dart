@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/encuesta_service.dart';
+import 'dialogo_requisitos.dart';
 import 'selector_votantes.dart';
 import '../../theme/luvegi_colors.dart';
 import '../../theme/luvegi_radius.dart';
@@ -1372,6 +1373,20 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
                               ? 'Votan $_votantesSeleccionados'
                               : 'Personal habilitado',
                         ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: LuvegiColors.secondary,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: () => mostrarDialogoRequisitos(
+                          context: context,
+                          service: widget.service,
+                          token: widget.token,
+                          encuestaId: widget.encuesta.id,
+                        ),
+                        icon: const Icon(Icons.rule, size: 18),
+                        label: const Text('Requisitos'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: LuvegiColors.secondary,
                         ),

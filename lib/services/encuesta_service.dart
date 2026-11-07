@@ -187,6 +187,38 @@ class EncuestaUsuario {
   }
 }
 
+/// Requisito que RRHH registro para poder postularse, y si la persona
+/// en sesion lo cumple. [cumple] es null cuando no se pudo verificar.
+class RequisitoPostulacion {
+  final int id;
+  final String tipo;
+  final String valor;
+  final String descripcion;
+  final bool? cumple;
+  final String detalle;
+
+  const RequisitoPostulacion({
+    required this.id,
+    required this.tipo,
+    required this.valor,
+    required this.descripcion,
+    this.cumple,
+    this.detalle = '',
+  });
+
+  factory RequisitoPostulacion.fromJson(Map<String, dynamic> json) {
+    final rawCumple = json['cumple'];
+    return RequisitoPostulacion(
+      id: _entero(json['id']),
+      tipo: (json['tipo'] ?? '').toString(),
+      valor: (json['valor'] ?? '').toString(),
+      descripcion: (json['descripcion'] ?? '').toString(),
+      cumple: rawCumple is bool ? rawCumple : null,
+      detalle: (json['detalle'] ?? '').toString(),
+    );
+  }
+}
+
 /// Una encuesta abierta mas el estado del usuario frente a ella.
 /// Puede haber varias abiertas a la vez y el usuario vota en cada una.
 class EncuestaVotable {
@@ -200,6 +232,10 @@ class EncuestaVotable {
   final String? fechaRespuesta;
   /// preguntaId -> id de la opcion con la que el usuario se postulo.
   final Map<int, int> misPostulaciones;
+  /// Requisitos que RRHH registro para esta encuesta.
+  final List<RequisitoPostulacion> requisitos;
+  final bool cumpleRequisitos;
+  final bool puedePostular;
 
   const EncuestaVotable({
     required this.encuesta,
@@ -211,10 +247,14 @@ class EncuestaVotable {
     this.recibo,
     this.fechaRespuesta,
     this.misPostulaciones = const {},
+    this.requisitos = const [],
+    this.cumpleRequisitos = true,
+    this.puedePostular = false,
   });
 
   factory EncuestaVotable.fromJson(Map<String, dynamic> json) {
     final rawPreguntas = json['preguntas'];
+    final rawRequisitos = json['requisitos'];
     final preguntas = rawPreguntas is List
         ? rawPreguntas
             .whereType<Map>()
@@ -240,6 +280,18 @@ class EncuestaVotable {
       yaRespondio: json['ya_respondio'] == true,
       restringida: json['restringida'] == true,
       misPostulaciones: _mapaPostulaciones(json['mis_postulaciones']),
+      requisitos: rawRequisitos is List
+          ? rawRequisitos
+              .whereType<Map>()
+              .map(
+                (e) => RequisitoPostulacion.fromJson(
+                  Map<String, dynamic>.from(e),
+                ),
+              )
+              .toList()
+          : <RequisitoPostulacion>[],
+      cumpleRequisitos: json['cumple_requisitos'] != false,
+      puedePostular: json['puede_postular'] == true,
       recibo: json['recibo']?.toString(),
       fechaRespuesta: json['fecha_respuesta']?.toString(),
     );
@@ -630,6 +682,75 @@ class EncuestaService {
         .get(
           Uri.parse('$_adminUrl?action=votantes&encuesta_id=$encuestaId'),
           headers: _headers(token),
+        )
+        .timeout(_timeout);
+
+    if (res.statusCode != 200) throw _handleError(res);
+    final data = _decodificar(res);
+    _verificarOk(data, res);
+    return data;
+  }
+
+  /// Requisitos de postulacion que RRHH registro para una encuesta.
+  Future<List<RequisitoPostulacion>> listarRequisitos({
+    required String token,
+    required int encuestaId,
+  }) async {
+    final res = await http
+        .get(
+          Uri.parse('$_adminUrl?action=requisitos&encuesta_id=$encuestaId'),
+          headers: _headers(token),
+        )
+        .timeout(_timeout);
+
+    if (res.statusCode != 200) throw _handleError(res);
+    final data = _decodificar(res);
+    _verificarOk(data, res);
+
+    final raw = data['requisitos'] as List<dynamic>? ?? const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => RequisitoPostulacion.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  /// Registra un requisito de postulacion.
+  Future<Map<String, dynamic>> guardarRequisito({
+    required String token,
+    required int encuestaId,
+    required String tipo,
+    required String valor,
+    String descripcion = '',
+  }) async {
+    final res = await http
+        .post(
+          Uri.parse('$_adminUrl?action=guardar_requisito'),
+          headers: _headers(token),
+          body: jsonEncode({
+            'encuesta_id': encuestaId,
+            'tipo': tipo,
+            'valor': valor,
+            'descripcion': descripcion,
+          }),
+        )
+        .timeout(_timeout);
+
+    if (res.statusCode != 200 && res.statusCode != 201) throw _handleError(res);
+    final data = _decodificar(res);
+    _verificarOk(data, res);
+    return data;
+  }
+
+  /// Elimina un requisito de postulacion.
+  Future<Map<String, dynamic>> eliminarRequisito({
+    required String token,
+    required int id,
+  }) async {
+    final res = await http
+        .post(
+          Uri.parse('$_adminUrl?action=eliminar_requisito'),
+          headers: _headers(token),
+          body: jsonEncode({'id': id}),
         )
         .timeout(_timeout);
 

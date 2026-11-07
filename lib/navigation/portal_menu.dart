@@ -236,6 +236,13 @@ List<PortalAccess> buildPortalAccesses({required PermisoFn tiene}) {
         Icons.how_to_vote_outlined,
       ),
     );
+    accesos.add(
+      const PortalAccess(
+        'Postulaciones',
+        'Encuesta',
+        Icons.how_to_reg_outlined,
+      ),
+    );
   }
   if (tiene('GESTIONAR_ELECCIONES')) {
     accesos.add(

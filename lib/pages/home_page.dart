@@ -39,6 +39,7 @@ import 'rdr/detalle_rdr_page.dart';
 import 'tickets/consultar_tickets_page.dart';
 import 'tickets/registrar_ticket_page.dart';
 import 'tickets/admin_tickets_page.dart';
+import 'encuestas/postulaciones_page.dart';
 import 'encuestas/responder_encuesta_page.dart';
 import 'encuestas/admin_encuestas_page.dart';
 import 'comunicados/comunicados_page.dart';
@@ -270,6 +271,8 @@ class _HomePageState extends State<HomePage> {
       
       // ACTUALIZADO PARA ENCUESTAS
       case 'Responder Encuesta':
+        return tieneCodigo('VOTAR_ELECCIONES');
+      case 'Postulaciones':
         return tieneCodigo('VOTAR_ELECCIONES');
       case 'Administrar Encuestas':
         return tieneCodigo('GESTIONAR_ELECCIONES');
@@ -533,6 +536,8 @@ class _HomePageState extends State<HomePage> {
       // ACTUALIZADO PARA ENCUESTAS
       case 'Responder Encuesta':
         return ResponderEncuestaPage(token: _token);
+      case 'Postulaciones':
+        return PostulacionesPage(token: _token);
       case 'Administrar Encuestas':
         return AdminEncuestasPage(token: _token);
 
