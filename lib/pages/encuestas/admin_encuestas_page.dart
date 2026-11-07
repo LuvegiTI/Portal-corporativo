@@ -660,8 +660,22 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
                   final n = (p['nombre'] ?? '').toString().toLowerCase();
                   final c = (p['correo'] ?? '').toString().toLowerCase();
                   final a = (p['areas'] ?? '').toString().toLowerCase();
-                  return n.contains(q) || c.contains(q) || a.contains(q);
+                  final r = (p['rol_nombre'] ?? '').toString().toLowerCase();
+                  return n.contains(q) ||
+                      c.contains(q) ||
+                      a.contains(q) ||
+                      r.contains(q);
                 }).toList();
+
+          // Agrupar por area: con ~150 personas, una lista plana es
+          // ilegible.
+          final grupos = <String, List<Map<String, dynamic>>>{};
+          for (final p in filtrados) {
+            final area = (p['areas'] ?? '').toString().trim();
+            final clave = area.isEmpty ? 'Sin area asignada' : area;
+            grupos.putIfAbsent(clave, () => <Map<String, dynamic>>[]).add(p);
+          }
+          final claves = grupos.keys.toList()..sort();
 
           return AlertDialog(
             title: const Text('Personal que puede votar'),
@@ -682,7 +696,7 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
                     autofocus: true,
                     onChanged: (_) => setDialogState(() {}),
                     decoration: const InputDecoration(
-                      labelText: 'Buscar',
+                      labelText: 'Buscar por nombre, correo, area o rol',
                       prefixIcon: Icon(Icons.search),
                       isDense: true,
                     ),
@@ -703,9 +717,22 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
                         child: const Text('Quitar todos'),
                       ),
                       const Spacer(),
-                      Text(
-                        '${seleccionados.length} seleccionados',
-                        style: LuvegiText.caption,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: LuvegiColors.menuHover,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${seleccionados.length} de ${personas.length}',
+                          style: LuvegiText.caption.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: LuvegiColors.secondary,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -719,37 +746,90 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
                     height:
                         (MediaQuery.of(ctx).size.height * 0.42).clamp(180.0, 360.0),
                     child: ListView.builder(
-                      itemCount: filtrados.length,
+                      itemCount: claves.length,
                       itemBuilder: (_, i) {
-                        final p = filtrados[i];
-                        final id = (p['id'] as num).toInt();
-                        final marcado = seleccionados.contains(id);
-                        final areas = (p['areas'] ?? '').toString();
-                        return CheckboxListTile(
-                          dense: true,
-                          value: marcado,
-                          onChanged: (v) => setDialogState(() {
-                            if (v == true) {
-                              seleccionados.add(id);
-                            } else {
-                              seleccionados.remove(id);
-                            }
-                          }),
-                          title: Text(
-                            (p['nombre'] ?? '').toString(),
-                            style: LuvegiText.body.copyWith(
-                              fontWeight: FontWeight.w600,
+                        final clave = claves[i];
+                        final miembros = grupos[clave]!;
+                        final ids = miembros
+                            .map((p) => (p['id'] as num).toInt())
+                            .toList();
+                        final todos = ids.every((id) => seleccionados.contains(id));
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
+                              color: LuvegiColors.surfaceHover,
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      '$clave (${miembros.length})',
+                                      style: LuvegiText.caption.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        color: LuvegiColors.textPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                  InkWell(
+                                    onTap: () => setDialogState(() {
+                                      if (todos) {
+                                        for (final id in ids) {
+                                          seleccionados.remove(id);
+                                        }
+                                      } else {
+                                        seleccionados.addAll(ids);
+                                      }
+                                    }),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      child: Text(
+                                        todos ? 'Quitar todos' : 'Marcar todos',
+                                        style: LuvegiText.caption.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                          color: LuvegiColors.secondary,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          subtitle: areas.isNotEmpty
-                              ? Text(areas, style: LuvegiText.caption)
-                              : null,
-                          secondary: (p['rol_nombre'] ?? '').toString().isEmpty
-                              ? null
-                              : Text(
-                                  (p['rol_nombre'] ?? '').toString(),
-                                  style: LuvegiText.caption,
+                            ...miembros.map(
+                              (p) => CheckboxListTile(
+                                dense: true,
+                                visualDensity: VisualDensity.compact,
+                                value: seleccionados.contains((p['id'] as num).toInt()),
+                                onChanged: (v) => setDialogState(() {
+                                  final id = (p['id'] as num).toInt();
+                                  if (v == true) {
+                                    seleccionados.add(id);
+                                  } else {
+                                    seleccionados.remove(id);
+                                  }
+                                }),
+                                title: Text(
+                                  (p['nombre'] ?? '').toString(),
+                                  style: LuvegiText.body.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13.5,
+                                  ),
                                 ),
+                                subtitle: Text(
+                                  (p['correo'] ?? '').toString(),
+                                  style: LuvegiText.caption.copyWith(fontSize: 11),
+                                ),
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                          ],
                         );
                       },
                     ),
@@ -1208,46 +1288,64 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
                       minimumSize: const Size(double.infinity, 44),
                     ),
                   ),
-                  if (usuarioId != null) ...[
-                    const SizedBox(height: LuvegiSpacing.sm),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.check_circle,
-                          size: 16,
-                          color: LuvegiColors.success,
+                if (usuarioId != null) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.check_circle,
+                        size: 16,
+                        color: LuvegiColors.success,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Candidato vinculado al personal del portal',
+                          style: LuvegiText.caption,
                         ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'Candidato vinculado al personal del portal',
-                            style: LuvegiText.caption,
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () => setDialogState(() {
-                            usuarioId = null;
-                            if (nombreAutofill != null &&
-                                nombreCtrl.text.trim() == nombreAutofill) {
-                              nombreCtrl.clear();
-                            }
-                            if (areaAutofill != null &&
-                                areaCtrl.text.trim() == areaAutofill) {
-                              areaCtrl.clear();
-                            }
-                            if (fotoAutofill != null &&
-                                fotoCtrl.text.trim() == fotoAutofill) {
-                              fotoCtrl.clear();
-                            }
-                            nombreAutofill = null;
-                            areaAutofill = null;
-                            fotoAutofill = null;
-                          }),
-                          child: const Text('Quitar'),
-                        ),
-                      ],
+                      ),
+                      TextButton(
+                        onPressed: () => setDialogState(() {
+                          usuarioId = null;
+                          if (nombreAutofill != null &&
+                              nombreCtrl.text.trim() == nombreAutofill) {
+                            nombreCtrl.clear();
+                          }
+                          if (areaAutofill != null &&
+                              areaCtrl.text.trim() == areaAutofill) {
+                            areaCtrl.clear();
+                          }
+                          if (fotoAutofill != null &&
+                              fotoCtrl.text.trim() == fotoAutofill) {
+                            fotoCtrl.clear();
+                          }
+                          nombreAutofill = null;
+                          areaAutofill = null;
+                          fotoAutofill = null;
+                        }),
+                        child: const Text('Quitar'),
+                      ),
+                    ],
+                  ),
+                ],
+                // Atajo contextual: quien esta armando el grupo de
+                // candidatos tambien configura aqui quien puede votar.
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _abrirSelectorVotantes,
+                    icon: const Icon(Icons.how_to_vote_outlined, size: 16),
+                    label: Text(
+                      _votantesRestringida
+                          ? 'Votan $_votantesSeleccionados personas'
+                          : 'Configurar quien puede votar',
+                      style: LuvegiText.caption.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: LuvegiColors.secondary,
+                      ),
                     ),
-                  ],
+                  ),
+                ),
                   const SizedBox(height: LuvegiSpacing.md),
                   TextField(
                     controller: nombreCtrl,
