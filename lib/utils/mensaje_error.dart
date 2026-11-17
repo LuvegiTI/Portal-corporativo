@@ -225,8 +225,11 @@ class MensajeError {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
+      case DioExceptionType.transformTimeout:
       case DioExceptionType.connectionError:
       case DioExceptionType.unknown:
+      case DioExceptionType.badResponse:
+
         final data = e.response?.data;
         if (data is Map) {
           final codigo = data['error']?.toString();
@@ -239,7 +242,7 @@ class MensajeError {
           }
         }
         return _sinConexion;
-      case DioExceptionType.badResponse:
+        case DioExceptionType.badResponse:
         final data = e.response?.data;
         if (data is Map) {
           final codigo = data['error']?.toString();
