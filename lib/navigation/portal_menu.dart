@@ -16,9 +16,11 @@ typedef PermisoFn = bool Function(String codigo, {String? id});
 List<PortalAccess> buildPortalAccesses({required PermisoFn tiene}) {
   final accesos = <PortalAccess>[];
 
-  accesos.add(
-    const PortalAccess('Comunicados', 'Comunicados', Icons.campaign_outlined),
-  );
+  if (tiene('VER_COMUNICADOS') || tiene('GESTIONAR_COMUNICADOS')) {
+    accesos.add(
+      const PortalAccess('Comunicados', 'Comunicados', Icons.campaign_outlined),
+    );
+  }
   if (tiene('GESTIONAR_COMUNICADOS')) {
     accesos.add(
       const PortalAccess(
@@ -231,9 +233,16 @@ List<PortalAccess> buildPortalAccesses({required PermisoFn tiene}) {
   if (tiene('VOTAR_ELECCIONES')) {
     accesos.add(
       const PortalAccess(
-        'Responder Encuesta',
+        'Mis Encuestas',
         'Encuesta',
         Icons.how_to_vote_outlined,
+      ),
+    );
+    accesos.add(
+      const PortalAccess(
+        'Mis Postulaciones',
+        'Encuesta',
+        Icons.how_to_reg_outlined,
       ),
     );
   }

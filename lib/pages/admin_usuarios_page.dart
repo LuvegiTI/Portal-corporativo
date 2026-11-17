@@ -23,7 +23,7 @@ class AdminUsuariosPage extends StatefulWidget {
 
 class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
   bool _cargando = true;
-  bool _sincronizandoDni = false;
+  bool _sincronizandoCesados = false;
   bool _buscandoDni = false;
   Map<String, dynamic>? _dniEncontrado;
   Timer? _debounceDni;
@@ -65,70 +65,13 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
             _rolesDisponibles = datos['roles'] ?? [];
           });
           final conFoto = (datos['con_foto'] as num?)?.toInt() ?? 0;
-          debugPrint(
-            'Usuarios: ${_usuarios.length} | con foto Odoo: $conFoto',
-          );
+          debugPrint('Usuarios: ${_usuarios.length} | con foto Odoo: $conFoto');
         }
       }
     } catch (e) {
       debugPrint('Error cargando usuarios: $e');
     } finally {
       if (mounted) setState(() => _cargando = false);
-    }
-  }
-
-  /// Rellena el DNI de los usuarios desde Odoo (hr.employee). Con el DNI el
-  /// emparejamiento con las fotos deja de depender del nombre.
-  Future<void> _sincronizarDni() async {
-    setState(() => _sincronizandoDni = true);
-    try {
-      final url = Uri.parse(
-        '$_baseUrl/admin_usuarios.php?action=sincronizar_dni',
-      );
-      final response = await http.get(
-        url,
-        headers: {
-          'Authorization': 'Bearer ${widget.token}',
-          'Content-Type': 'application/json',
-        },
-      );
-
-      final body = json.decode(response.body);
-      if (!mounted) return;
-
-      if (response.statusCode == 200 && body['ok'] == true) {
-        final actualizados = (body['actualizados'] as num?)?.toInt() ?? 0;
-        final sinCruce = (body['sin_cruce'] as num?)?.toInt() ?? 0;
-        final conflictos = (body['conflictos'] as List?)?.length ?? 0;
-        await _cargarDatos();
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'DNI sincronizados: $actualizados | sin cruce: $sinCruce'
-              '${conflictos > 0 ? ' | conflictos: $conflictos' : ''}',
-            ),
-            backgroundColor: LuvegiColors.success,
-          ),
-        );
-      } else {
-        final mensaje =
-            body['mensaje']?.toString() ??
-            MensajeError.desdeCodigo(body['error']?.toString());
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(mensaje), backgroundColor: LuvegiColors.error),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(MensajeError.desdeExcepcion(e)),
-          backgroundColor: LuvegiColors.error,
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _sincronizandoDni = false);
     }
   }
 
@@ -160,15 +103,325 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
   Future<Map<String, dynamic>?> _autocompletarPorDni(
     String dni,
     TextEditingController nombreCtrl,
-    void Function(Map<String, dynamic>?) onResultado,
-  ) async {
+    void Function(Map<String, dynamic>?) onResultado, {
+    BuildContext? dialogContext,
+  }) async {
     final data = await _buscarPorDni(dni);
     if (!mounted) return null;
+    if (dialogContext != null && !dialogContext.mounted) return null;
     onResultado(data);
-    if (data != null && nombreCtrl.text.trim().isEmpty) {
-      nombreCtrl.text = (data['nombre'] ?? '').toString();
+    final nombre = (data?['nombre'] ?? '').toString();
+    if (data != null && nombre.isNotEmpty) {
+      nombreCtrl.text = nombre;
+      nombreCtrl.selection = TextSelection.fromPosition(
+        TextPosition(offset: nombreCtrl.text.length),
+      );
     }
     return data;
+  }
+
+  Future<void> _traerNombreOdoo(
+    BuildContext dialogContext,
+    String dniTexto,
+    TextEditingController nombreCtrl,
+    void Function(void Function()) setModalState,
+  ) async {
+    final dni = dniTexto.replaceAll(RegExp(r'\D'), '');
+    if (dni.length < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Escribe un DNI válido (8 dígitos).')),
+      );
+      return;
+    }
+
+    setModalState(() => _buscandoDni = true);
+    final data = await _buscarPorDni(dni);
+    if (!mounted || !dialogContext.mounted) return;
+
+    setModalState(() {
+      _buscandoDni = false;
+      _dniEncontrado = data;
+    });
+
+    if (data == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ese DNI no está registrado en Odoo.')),
+      );
+      return;
+    }
+
+    final nombre = (data['nombre'] ?? '').toString();
+    if (nombre.isEmpty) return;
+    setModalState(() {
+      nombreCtrl.text = nombre;
+      nombreCtrl.selection = TextSelection.fromPosition(
+        TextPosition(offset: nombreCtrl.text.length),
+      );
+    });
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Nombre traído de Odoo: $nombre')));
+  }
+
+  /// Sincroniza con Odoo los usuarios que tienen la etiqueta "Cesado" y da
+  /// de baja en el portal a los que corresponden. Primero muestra una vista
+  /// previa: nada se da de baja hasta que se confirma.
+  Future<void> _sincronizarCesados() async {
+    setState(() => _sincronizandoCesados = true);
+    Map<String, dynamic>? vista;
+    try {
+      final url = Uri.parse(
+        '$_baseUrl/admin_usuarios.php?action=sincronizar_cesados',
+      );
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Content-Type': 'application/json',
+        },
+      );
+      final body = json.decode(response.body);
+      if (!mounted) return;
+
+      if (response.statusCode != 200 || body['ok'] != true) {
+        final mensaje =
+            body['mensaje']?.toString() ??
+            MensajeError.desdeCodigo(body['error']?.toString());
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(mensaje), backgroundColor: LuvegiColors.error),
+        );
+        return;
+      }
+      vista = Map<String, dynamic>.from(body);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(MensajeError.desdeExcepcion(e)),
+          backgroundColor: LuvegiColors.error,
+        ),
+      );
+      return;
+    } finally {
+      if (mounted) setState(() => _sincronizandoCesados = false);
+    }
+
+    final aBaja = (vista!['a_baja'] as List?) ?? const [];
+    final sinCruce = (vista['sin_cruce'] as List?) ?? const [];
+    final yaBaja = (vista['ya_baja'] as List?) ?? const [];
+    final totalOdoo = (vista['cesados_odoo'] as num?)?.toInt() ?? 0;
+
+    if (!mounted) return;
+    final aplicar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cesados en Odoo (etiqueta "Cesado")'),
+        content: SizedBox(
+          // Ancho fijo: el AlertDialog calcula el ancho intrinseco del
+          // contenido y un viewport (scroll) no lo soporta.
+          width: (MediaQuery.sizeOf(ctx).width - 80).clamp(240.0, 480.0),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Validación en Odoo: $totalOdoo empleado(s) tienen la '
+                  'etiqueta "Cesado".',
+                  style: LuvegiText.body,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Solo se dan de baja los que tienen la etiqueta y '
+                  'coinciden por DNI con un único usuario del portal. '
+                  'No se usa el correo ni el nombre para dar de baja.',
+                  style: LuvegiText.caption,
+                ),
+                const SizedBox(height: 12),
+                if (aBaja.isEmpty)
+                  Text(
+                    'No hay usuarios del portal por dar de baja.',
+                    style: LuvegiText.bodySecondary,
+                  )
+                else ...[
+                  Text(
+                    'Con usuario en el portal (se darán de baja):',
+                    style: LuvegiText.body.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  ...aBaja.map(
+                    (x) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.person_off_outlined,
+                            size: 18,
+                            color: LuvegiColors.error,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  (x['usuario'] ?? '').toString(),
+                                  style: LuvegiText.body.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Text(
+                                  '${(x['correo'] ?? '').toString()} · '
+                                  'Odoo: ${(x['empleado'] ?? '').toString()} · '
+                                  'por ${(x['emparejado_por'] ?? '').toString()}',
+                                  style: LuvegiText.caption,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+                if (yaBaja.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Ya estaban de baja: ${yaBaja.length}',
+                    style: LuvegiText.caption,
+                  ),
+                ],
+                if (sinCruce.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Con etiqueta "Cesado" pero sin coincidencia exacta en '
+                    'el portal: ${sinCruce.length}',
+                    style: LuvegiText.caption.copyWith(
+                      color: LuvegiColors.warning,
+                    ),
+                  ),
+                  ...sinCruce.map((x) {
+                    final empleado = (x['empleado'] ?? '').toString();
+                    final dni = (x['dni'] ?? '').toString();
+                    final motivo = switch ((x['motivo'] ?? '').toString()) {
+                      'SIN_DNI_EN_ODOO' =>
+                        'sin DNI en Odoo (no se puede vincular)',
+                      'SIN_USUARIO_CON_DNI' =>
+                        'sin usuario en el portal con ese DNI',
+                      'DNI_DUPLICADO_EN_PORTAL' =>
+                        'DNI duplicado en el portal; revisar manualmente',
+                      'NOMBRE_NO_COINCIDE' =>
+                        'el nombre no coincide con Odoo; revisar manualmente',
+                      _ => 'sin coincidencia exacta por DNI',
+                    };
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '· $empleado${dni.isEmpty ? '' : ' (DNI $dni)'}',
+                            style: LuvegiText.caption,
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 10),
+                            child: Text(
+                              '$motivo — no se da de baja',
+                              style: LuvegiText.caption.copyWith(
+                                color: LuvegiColors.warning,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+                const SizedBox(height: 12),
+                Text(
+                  'La baja es efectiva de inmediato: al invalidar el usuario, '
+                  'su sesión deja de servir en la siguiente petición.',
+                  style: LuvegiText.caption,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: aBaja.isEmpty ? null : () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: LuvegiColors.error,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(
+              aBaja.isEmpty
+                  ? 'Nada que dar de baja'
+                  : 'Dar de baja (${aBaja.length})',
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (aplicar != true || !mounted) return;
+
+    setState(() => _sincronizandoCesados = true);
+    try {
+      final url = Uri.parse(
+        '$_baseUrl/admin_usuarios.php?action=sincronizar_cesados',
+      );
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({'aplicar': 1}),
+      );
+      final body = json.decode(response.body);
+      if (!mounted) return;
+
+      if (response.statusCode == 200 && body['ok'] == true) {
+        final dados = (body['dados_de_baja'] as num?)?.toInt() ?? 0;
+        await _cargarDatos();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              dados == 0
+                  ? 'No había usuarios por dar de baja.'
+                  : '$dados usuario(s) dado(s) de baja.',
+            ),
+            backgroundColor: LuvegiColors.success,
+          ),
+        );
+      } else {
+        final mensaje =
+            body['mensaje']?.toString() ??
+            MensajeError.desdeCodigo(body['error']?.toString());
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(mensaje), backgroundColor: LuvegiColors.error),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(MensajeError.desdeExcepcion(e)),
+          backgroundColor: LuvegiColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _sincronizandoCesados = false);
+    }
   }
 
   Future<void> _guardarAccesosUsuario({
@@ -217,7 +470,10 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(MensajeError.desdeExcepcion(e)), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text(MensajeError.desdeExcepcion(e)),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -262,7 +518,10 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
     } catch (e) {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(MensajeError.desdeExcepcion(e)), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(MensajeError.desdeExcepcion(e)),
+            backgroundColor: Colors.red,
+          ),
         );
     }
   }
@@ -294,7 +553,10 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
     } catch (e) {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(MensajeError.desdeExcepcion(e)), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(MensajeError.desdeExcepcion(e)),
+            backgroundColor: Colors.red,
+          ),
         );
     }
   }
@@ -328,10 +590,6 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
     final TextEditingController dniCtrl = TextEditingController(
       text: usuario['dni']?.toString() ?? '',
     );
-    // Si el usuario cruza con Odoo, el nombre lo pone Odoo: se muestra
-    // pero no se edita a mano.
-    final bool nombreDesdeOdoo = usuario['tiene_odoo'] == true;
-
     List<int> areasSeleccionadas = [];
     if (usuario['areas_ids'] != null &&
         usuario['areas_ids'].toString().isNotEmpty) {
@@ -366,8 +624,13 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                   ),
                 ],
               ),
-              content: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 480),
+              content: SizedBox(
+                // Ancho fijo: el AlertDialog calcula el ancho intrinseco del
+                // contenido y un viewport (scroll) no lo soporta.
+                width: (MediaQuery.sizeOf(context).width - 80).clamp(
+                  240.0,
+                  480.0,
+                ),
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -383,15 +646,12 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                       const SizedBox(height: 6),
                       TextField(
                         controller: nombreCtrl,
-                        enabled: !nombreDesdeOdoo,
                         decoration: InputDecoration(
-                          labelText: nombreDesdeOdoo
-                              ? 'Nombre (desde Odoo)'
-                              : 'Nombre Completo',
+                          labelText: 'Nombre Completo',
                           hintText: 'Ej. Juan Pérez',
-                          helperText: nombreDesdeOdoo
-                              ? 'El nombre se toma de Odoo según el DNI. Para corregirlo, borra el DNI.'
-                              : null,
+                          helperText:
+                              'Editable. Usa el botón junto al DNI para '
+                              'traer el nombre registrado en Odoo.',
                           helperMaxLines: 2,
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -445,15 +705,16 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                                 _dniEncontrado = data;
                                 _buscandoDni = false;
                               }),
+                              dialogContext: context,
                             ),
                           );
                         },
                         decoration: InputDecoration(
                           labelText: 'DNI',
                           hintText: 'Opcional. Empareja con la foto de Odoo',
-                          helperText: nombreDesdeOdoo
-                              ? 'El nombre se toma de Odoo según el DNI. Para corregirlo, borra el DNI.'
-                              : 'Con el DNI la foto del personal se empareja de forma exacta.',
+                          helperText:
+                              'Con el DNI se empareja la foto y puedes '
+                              'traer el nombre registrado en Odoo.',
                           helperMaxLines: 2,
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -474,6 +735,24 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                         const SizedBox(height: 12),
                         _vistaPreviaOdoo(_dniEncontrado!),
                       ],
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: _buscandoDni
+                              ? null
+                              : () => _traerNombreOdoo(
+                                  context,
+                                  dniCtrl.text,
+                                  nombreCtrl,
+                                  setModalState,
+                                ),
+                          icon: const Icon(
+                            Icons.cloud_download_outlined,
+                            size: 18,
+                          ),
+                          label: const Text('Traer nombre de Odoo'),
+                        ),
+                      ),
                       const Divider(height: 28),
                       const Text(
                         '1. Rol del Sistema',
@@ -579,17 +858,19 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                   child: const Text('Cancelar'),
                 ),
                 ElevatedButton(
-                  onPressed: () async {
-                    Navigator.pop(dialogContext);
-                    await _guardarAccesosUsuario(
-                      usuarioId: int.parse(usuario['id'].toString()),
-                      rolId: rolSeleccionado,
-                      areasIds: areasSeleccionadas,
-                      nombre: nombreCtrl.text,
-                      usuario: usuarioCtrl.text,
-                      dni: dniCtrl.text,
-                    );
-                  },
+                  onPressed: _buscandoDni
+                      ? null
+                      : () async {
+                          Navigator.pop(dialogContext);
+                          await _guardarAccesosUsuario(
+                            usuarioId: int.parse(usuario['id'].toString()),
+                            rolId: rolSeleccionado,
+                            areasIds: areasSeleccionadas,
+                            nombre: nombreCtrl.text,
+                            usuario: usuarioCtrl.text,
+                            dni: dniCtrl.text,
+                          );
+                        },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: LuvegiColors.secondary,
                     foregroundColor: Colors.white,
@@ -632,8 +913,10 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                 'Crear Nuevo Usuario',
                 style: LuvegiText.title.copyWith(fontSize: 18),
               ),
-              content: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 400),
+              content: SizedBox(
+                // Ancho fijo: el AlertDialog calcula el ancho intrinseco del
+                // contenido y un viewport (scroll) no lo soporta.
+                width: (MediaQuery.sizeOf(ctx).width - 80).clamp(240.0, 400.0),
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -670,13 +953,15 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                                 _dniEncontrado = data;
                                 _buscandoDni = false;
                               }),
+                              dialogContext: context,
                             ),
                           );
                         },
                         decoration: InputDecoration(
                           hintText: 'Ej. 70558609',
                           helperText:
-                              'Con el DNI se toman el nombre y la foto desde Odoo.',
+                              'Con el DNI se completa el nombre y la foto '
+                              'desde Odoo; puedes editarlo.',
                           helperMaxLines: 2,
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -723,7 +1008,7 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                       ),
                       const SizedBox(height: 16),
                       const Text(
-                        'Nombre (solo si no hay DNI)',
+                        'Nombre',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
@@ -735,7 +1020,8 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                         decoration: InputDecoration(
                           hintText: 'Ej. Juan Pérez',
                           helperText:
-                              'Si escribes un DNI, el nombre se completa solo.',
+                              'Con DNI se completa desde Odoo; puedes '
+                              'corregirlo antes de guardar.',
                           helperMaxLines: 2,
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -816,16 +1102,18 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                   child: const Text('Cancelar'),
                 ),
                 ElevatedButton(
-                  onPressed: () async {
-                    Navigator.pop(ctx);
-                    await _crearUsuario(
-                      nombreCtrl.text,
-                      correoCtrl.text,
-                      passCtrl.text,
-                      rolSeleccionado,
-                      dni: dniCtrl.text,
-                    );
-                  },
+                  onPressed: _buscandoDni
+                      ? null
+                      : () async {
+                          Navigator.pop(ctx);
+                          await _crearUsuario(
+                            nombreCtrl.text,
+                            correoCtrl.text,
+                            passCtrl.text,
+                            rolSeleccionado,
+                            dni: dniCtrl.text,
+                          );
+                        },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: LuvegiColors.secondary,
                     foregroundColor: Colors.white,
@@ -939,9 +1227,9 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
           child: Text(
             esActivo
                 ? 'El usuario no podrá iniciar sesión ni recibir notificaciones. '
-                    '¿Deseas continuar?'
+                      '¿Deseas continuar?'
                 : 'El usuario volverá a poder iniciar sesión y recibir notificaciones. '
-                    '¿Deseas continuar?',
+                      '¿Deseas continuar?',
             style: const TextStyle(fontSize: 13.5, height: 1.4),
           ),
         ),
@@ -985,7 +1273,9 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
         if (mounted)
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(body['message']?.toString() ?? 'Estado actualizado.'),
+              content: Text(
+                body['message']?.toString() ?? 'Estado actualizado.',
+              ),
             ),
           );
         _registrar(
@@ -1000,7 +1290,10 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
     } catch (e) {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(MensajeError.desdeExcepcion(e)), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(MensajeError.desdeExcepcion(e)),
+            backgroundColor: Colors.red,
+          ),
         );
     }
   }
@@ -1029,10 +1322,7 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
     final nombre = (user['nombre'] ?? '').toString();
 
     if (!activo) {
-      return Icon(
-        Icons.person_outline_rounded,
-        color: Colors.red.shade800,
-      );
+      return Icon(Icons.person_outline_rounded, color: Colors.red.shade800);
     }
 
     if (fotoUrl.isNotEmpty) {
@@ -1042,9 +1332,7 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
           width: 40,
           height: 40,
           fit: BoxFit.cover,
-          headers: {
-            'Authorization': 'Bearer ${widget.token}',
-          },
+          headers: {'Authorization': 'Bearer ${widget.token}'},
           errorBuilder: (_, _, _) => _inicialesUsuario(nombre),
         ),
       );
@@ -1079,16 +1367,17 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                       width: 44,
                       height: 44,
                       fit: BoxFit.cover,
-                      headers: {
-                        'Authorization': 'Bearer ${widget.token}',
-                      },
+                      headers: {'Authorization': 'Bearer ${widget.token}'},
                       errorBuilder: (_, _, _) => const Icon(
                         Icons.person_outline,
                         color: LuvegiColors.secondary,
                       ),
                     ),
                   )
-                : const Icon(Icons.person_outline, color: LuvegiColors.secondary),
+                : const Icon(
+                    Icons.person_outline,
+                    color: LuvegiColors.secondary,
+                  ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1106,7 +1395,7 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                   ),
                 const SizedBox(height: 2),
                 Text(
-                  'Encontrado en Odoo. Se usará este nombre.',
+                  'Nombre registrado en Odoo.',
                   style: LuvegiText.caption.copyWith(
                     color: LuvegiColors.secondary,
                     fontWeight: FontWeight.w600,
@@ -1128,12 +1417,10 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
         .where((p) => p.isNotEmpty)
         .toList();
     if (partes.isEmpty) {
-      return Icon(
-        Icons.person_outline_rounded,
-        color: Colors.green.shade800,
-      );
+      return Icon(Icons.person_outline_rounded, color: Colors.green.shade800);
     }
-    String dos(String s) => s.length >= 2 ? s.substring(0, 2).toUpperCase() : s.toUpperCase();
+    String dos(String s) =>
+        s.length >= 2 ? s.substring(0, 2).toUpperCase() : s.toUpperCase();
     final texto = partes.length >= 2
         ? dos(partes[0][0] + partes[partes.length - 1][0])
         : dos(partes.first.substring(0, 1));
@@ -1212,16 +1499,20 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                     ),
                     const SizedBox(width: 4),
                     OutlinedButton.icon(
-                      onPressed: _sincronizandoDni ? null : _sincronizarDni,
-                      icon: _sincronizandoDni
+                      onPressed: _sincronizandoCesados
+                          ? null
+                          : _sincronizarCesados,
+                      icon: _sincronizandoCesados
                           ? const SizedBox(
                               width: 14,
                               height: 14,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Icon(Icons.badge_outlined, size: 18),
+                          : const Icon(Icons.person_off_outlined, size: 18),
                       label: Text(
-                        _sincronizandoDni ? 'Sincronizando...' : 'Sincronizar DNI',
+                        _sincronizandoCesados
+                            ? 'Validando...'
+                            : 'Cesados (Odoo)',
                       ),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: LuvegiColors.secondary,
@@ -1314,7 +1605,9 @@ class _AdminUsuariosPageState extends State<AdminUsuariosPage> {
                                       user['usuario'] ?? '',
                                       style: LuvegiText.caption,
                                     ),
-                                    if ((user['dni'] ?? '').toString().isNotEmpty) ...[
+                                    if ((user['dni'] ?? '')
+                                        .toString()
+                                        .isNotEmpty) ...[
                                       const SizedBox(height: 2),
                                       Text(
                                         'DNI: ${user['dni']}',
