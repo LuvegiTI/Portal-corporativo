@@ -5,18 +5,6 @@ import '../../theme/luvegi_colors.dart';
 import '../../theme/luvegi_radius.dart';
 import '../../theme/luvegi_text.dart';
 
-/// Resumen de quien puede votar en una encuesta.
-class ResumenVotantes {
-  final int total;
-  final bool restringida;
-
-  const ResumenVotantes({this.total = 0, this.restringida = false});
-
-  String get texto => restringida
-      ? '$total persona${total == 1 ? '' : 's'} habilitada${total == 1 ? '' : 's'}'
-      : 'Sin restriccion: todo el personal con permiso puede votar';
-}
-
 /// Abre el selector de personal que puede votar en una encuesta.
 /// Devuelve la lista de ids seleccionados, o null si se cancelo.
 Future<List<int>?> mostrarSelectorVotantes({
@@ -93,10 +81,14 @@ Future<List<int>?> mostrarSelectorVotantes({
 
         // Ancho y alto fijos: el AlertDialog pide el ancho intrinseco de su
         // contenido y un viewport sin ancho fijo revienta.
-        final anchoLista =
-            (MediaQuery.of(ctx).size.width - 96).clamp(260.0, 430.0);
-        final altoLista =
-            (MediaQuery.of(ctx).size.height * 0.44).clamp(200.0, 380.0);
+        final anchoLista = (MediaQuery.of(ctx).size.width - 96).clamp(
+          260.0,
+          430.0,
+        );
+        final altoLista = (MediaQuery.of(ctx).size.height * 0.44).clamp(
+          200.0,
+          380.0,
+        );
 
         return AlertDialog(
           title: const Text('Personal que puede votar'),
@@ -128,8 +120,8 @@ Future<List<int>?> mostrarSelectorVotantes({
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Si no marcas a nadie, la encuesta queda abierta a '
-                          'todo el personal con permiso de votar.',
+                          'Solo podrá votar el personal que marques aquí. '
+                          'Si no marcas a nadie, nadie podrá votar.',
                           style: LuvegiText.caption,
                         ),
                       ),
@@ -188,7 +180,8 @@ Future<List<int>?> mostrarSelectorVotantes({
                       ),
                     ),
                     TextButton.icon(
-                      onPressed: () => setDialogState(() => seleccionados.clear()),
+                      onPressed: () =>
+                          setDialogState(() => seleccionados.clear()),
                       icon: const Icon(Icons.clear_all, size: 16),
                       label: const Text('Limpiar'),
                       style: TextButton.styleFrom(
@@ -230,7 +223,9 @@ Future<List<int>?> mostrarSelectorVotantes({
                       final ids = miembros
                           .map((p) => (p['id'] as num).toInt())
                           .toList();
-                      final todos = ids.every((id) => seleccionados.contains(id));
+                      final todos = ids.every(
+                        (id) => seleccionados.contains(id),
+                      );
 
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -342,7 +337,33 @@ Future<List<int>?> mostrarSelectorVotantes({
   );
 
   filtroCtrl.dispose();
-  return resultado;
+  if (resultado == null || resultado.isNotEmpty || !context.mounted) {
+    return resultado;
+  }
+
+  // Guardar sin nadie marcado deja la encuesta sin votantes: se confirma.
+  final confirmar = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Sin personal habilitado'),
+      content: const Text(
+        'No marcaste a nadie. Si guardas, nadie podrá votar en esta encuesta '
+        'hasta que asignes personal.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          style: FilledButton.styleFrom(backgroundColor: LuvegiColors.error),
+          child: const Text('Guardar sin votantes'),
+        ),
+      ],
+    ),
+  );
+  return confirmar == true ? resultado : null;
 }
 
 /// Fila de una persona: foto (o iniciales), nombre y area.

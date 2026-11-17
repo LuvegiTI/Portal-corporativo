@@ -32,9 +32,32 @@ class Encuesta {
   final String? fechaInicio;
   final String? fechaFin;
   final String estado;
+
+  /// Flujo: ENCUESTA (votacion directa) o POSTULACION (candidatos).
+  final String tipo;
+  final String? inscripcionInicio;
+  final String? inscripcionFin;
+  final String? votacionInicio;
+  final String? votacionFin;
   final int preguntas;
   final int opciones;
   final int participantes;
+
+  /// Cuantos personas estan habilitadas para votar. Null si el backend no
+  /// lo informa (no se puede entonces exigir la configuracion).
+  final int? votantes;
+
+  /// Candidatos ya aprobados (solo electoral). Null si el backend no lo
+  /// informa.
+  final int? candidatosAprobados;
+
+  /// Requisitos de postulacion definidos (solo electoral). Null si el
+  /// backend no lo informa.
+  final int? requisitos;
+
+  /// Codigo que explica por que la encuesta no se abre sola (vacio = si se
+  /// abre). El texto se arma en la app, en la zona del usuario.
+  final String? motivoApertura;
 
   const Encuesta({
     required this.id,
@@ -43,24 +66,121 @@ class Encuesta {
     required this.fechaInicio,
     required this.fechaFin,
     required this.estado,
+    this.tipo = 'ENCUESTA',
+    this.inscripcionInicio,
+    this.inscripcionFin,
+    this.votacionInicio,
+    this.votacionFin,
     required this.preguntas,
     required this.opciones,
     required this.participantes,
+    this.votantes,
+    this.candidatosAprobados,
+    this.requisitos,
+    this.motivoApertura,
   });
 
   factory Encuesta.fromJson(Map<String, dynamic> json) {
+    final estado = (json['estado'] ?? '').toString();
     return Encuesta(
       id: _entero(json['id']),
       titulo: (json['titulo'] ?? '').toString(),
       descripcion: (json['descripcion'] ?? '').toString(),
       fechaInicio: json['fecha_inicio']?.toString(),
       fechaFin: json['fecha_fin']?.toString(),
-      estado: (json['estado'] ?? '').toString(),
+      estado: estado,
+      tipo: _tipoDesdeJson(json),
+      inscripcionInicio: json['inscripcion_inicio']?.toString(),
+      inscripcionFin: json['inscripcion_fin']?.toString(),
+      votacionInicio: json['votacion_inicio']?.toString(),
+      votacionFin: json['votacion_fin']?.toString(),
       preguntas: _entero(json['preguntas']),
       opciones: _entero(json['opciones']),
       participantes: _entero(json['participantes']),
+      votantes: json['votantes'] == null ? null : _entero(json['votantes']),
+      candidatosAprobados: json['candidatos_aprobados'] == null
+          ? null
+          : _entero(json['candidatos_aprobados']),
+      requisitos: json['requisitos'] == null
+          ? null
+          : _entero(json['requisitos']),
+      motivoApertura: (json['motivo_apertura'] ?? '').toString().isEmpty
+          ? null
+          : (json['motivo_apertura'] ?? '').toString(),
     );
   }
+
+  bool get cerrada => estado == 'CERRADA';
+
+  /// True si es un proceso de postulaciones (el personal se postula).
+  bool get esPostulacion => tipo == 'POSTULACION';
+
+  /// True si es una encuesta de votacion directa.
+  bool get esEncuesta => tipo != 'POSTULACION';
+
+  /// Inicio de la ventana de postulaciones (si se programo).
+  DateTime? get postulacionesInicio => _fechaIso(inscripcionInicio);
+
+  /// Fin de la ventana de postulaciones (si se programo).
+  DateTime? get postulacionesFin => _fechaIso(inscripcionFin);
+
+  /// Apertura de la votacion (si se programo).
+  DateTime? get votacionDesde => _fechaIso(votacionInicio);
+
+  /// Cierre de la votacion (si se programo).
+  DateTime? get votacionHasta => _fechaIso(votacionFin);
+
+  /// True si ahora mismo esta abierta la ventana de postulaciones.
+  /// Sin fecha de apertura se considera abierta, igual que el backend.
+  bool get postulacionesAbiertas {
+    final ahora = DateTime.now();
+    final inicio = postulacionesInicio;
+    if (inicio != null && ahora.isBefore(inicio)) return false;
+    final fin = postulacionesFin;
+    if (fin != null && ahora.isAfter(fin)) return false;
+    return true;
+  }
+
+  /// True si la votacion ya empezo y todavia no termino.
+  bool get votacionEnCurso {
+    final inicio = votacionDesde;
+    final ahora = DateTime.now();
+    if (inicio != null && ahora.isBefore(inicio)) return false;
+    final fin = votacionHasta;
+    if (fin != null && ahora.isAfter(fin)) return false;
+    return true;
+  }
+
+  /// True si la votacion ya empezo (o nunca se programo).
+  bool get votacionEmpezada {
+    final inicio = votacionDesde;
+    if (inicio == null) return true;
+    return !DateTime.now().isBefore(inicio);
+  }
+
+  /// True si el proceso tiene una hora de apertura programada.
+  /// Una postulacion se programa con su ventana de inscripcion; una
+  /// encuesta de votacion, con la de votacion.
+  bool get programada {
+    if (cerrada || estado == 'ABIERTA') return false;
+    final esPost = esPostulacion || (requisitos ?? 0) > 0;
+    if (esPost) {
+      return inscripcionInicio != null && inscripcionInicio!.trim().isNotEmpty;
+    }
+    return votacionInicio != null && votacionInicio!.trim().isNotEmpty;
+  }
+}
+
+/// Tipo de flujo de la encuesta.
+String _tipoDesdeJson(Map<String, dynamic> json) {
+  final tipo = (json['tipo'] ?? '').toString().toUpperCase();
+  return tipo == 'POSTULACION' ? 'POSTULACION' : 'ENCUESTA';
+}
+
+/// Convierte la fecha del servidor (ISO con zona) a hora local.
+DateTime? _fechaIso(String? valor) {
+  if (valor == null || valor.trim().isEmpty) return null;
+  return DateTime.tryParse(valor.replaceFirst(' ', 'T'))?.toLocal();
 }
 
 class EncuestaPregunta {
@@ -105,8 +225,19 @@ class EncuestaOpcion {
   final int orden;
   final bool activo;
   final int? usuarioId;
+
+  /// PENDIENTE | APROBADA | RECHAZADA (solo candidatos).
+  final String estado;
+  final String motivoRechazo;
+
   /// True si esta opcion es la postulacion del usuario en sesion.
   final bool esMia;
+
+  /// True si la opcion la registro RRHH como requisito (sin usuario).
+  final bool esRequisito;
+
+  /// DNI del postulante (se jala al guardar la postulacion).
+  final String dni;
 
   const EncuestaOpcion({
     required this.id,
@@ -118,11 +249,16 @@ class EncuestaOpcion {
     required this.orden,
     required this.activo,
     this.usuarioId,
+    this.estado = 'APROBADA',
+    this.motivoRechazo = '',
     this.esMia = false,
+    this.esRequisito = false,
+    this.dni = '',
   });
 
   factory EncuestaOpcion.fromJson(Map<String, dynamic> json) {
     final usuarioId = json['usuario_id'];
+    final estado = (json['estado'] ?? 'APROBADA').toString().toUpperCase();
     return EncuestaOpcion(
       id: _entero(json['id']),
       preguntaId: _entero(json['pregunta_id']),
@@ -132,11 +268,20 @@ class EncuestaOpcion {
       fotoUrl: (json['foto_url'] ?? '').toString(),
       orden: _entero(json['orden']),
       activo: json['activo'] == 1 || json['activo'] == true,
-      usuarioId:
-          usuarioId == null ? null : (usuarioId is num ? usuarioId.toInt() : int.tryParse('$usuarioId')),
+      usuarioId: usuarioId == null
+          ? null
+          : (usuarioId is num ? usuarioId.toInt() : int.tryParse('$usuarioId')),
+      estado: estado,
+      motivoRechazo: (json['motivo_rechazo'] ?? '').toString(),
       esMia: json['es_mia'] == true,
+      esRequisito: json['es_requisito'] == true,
+      dni: (json['dni'] ?? '').toString(),
     );
   }
+
+  bool get esAprobada => estado == 'APROBADA';
+  bool get esPendiente => estado == 'PENDIENTE';
+  bool get esRechazada => estado == 'RECHAZADA';
 }
 
 /// Usuario de la tabla usuarios_app, para elegir candidatos de las opciones.
@@ -194,6 +339,7 @@ class RequisitoPostulacion {
   final String tipo;
   final String valor;
   final String descripcion;
+  final bool obligatorio;
   final bool? cumple;
   final String detalle;
 
@@ -202,17 +348,24 @@ class RequisitoPostulacion {
     required this.tipo,
     required this.valor,
     required this.descripcion,
+    this.obligatorio = true,
     this.cumple,
     this.detalle = '',
   });
 
   factory RequisitoPostulacion.fromJson(Map<String, dynamic> json) {
     final rawCumple = json['cumple'];
+    final rawObligatorio = json['obligatorio'];
     return RequisitoPostulacion(
       id: _entero(json['id']),
       tipo: (json['tipo'] ?? '').toString(),
       valor: (json['valor'] ?? '').toString(),
       descripcion: (json['descripcion'] ?? '').toString(),
+      obligatorio: rawObligatorio is bool
+          ? rawObligatorio
+          : (rawObligatorio == null ||
+                rawObligatorio == 1 ||
+                rawObligatorio == '1'),
       cumple: rawCumple is bool ? rawCumple : null,
       detalle: (json['detalle'] ?? '').toString(),
     );
@@ -228,14 +381,34 @@ class EncuestaVotable {
   final bool dentroDeVentana;
   final bool yaRespondio;
   final bool restringida;
+
+  /// True si el usuario esta en el personal asignado para votar.
+  /// El backend tambien lo valida al votar.
+  final bool puedeParticipar;
+
+  /// True si el usuario puede VOTAR en esta encuesta (esta en el personal
+  /// habilitado). Durante la inscripcion todos pueden postular, pero solo
+  /// los habilitados votan.
+  final bool puedeVotar;
+
   final String? recibo;
   final String? fechaRespuesta;
+
   /// preguntaId -> id de la opcion con la que el usuario se postulo.
   final Map<int, int> misPostulaciones;
+
+  /// preguntaId -> estado de la postulacion (PENDIENTE/APROBADA/RECHAZADA).
+  final Map<int, String> misPostulacionesEstado;
+
+  /// Nombre y DNI del usuario en sesion, capturados de su perfil.
+  final String miNombre;
+  final String miDni;
+
   /// Requisitos que RRHH registro para esta encuesta.
   final List<RequisitoPostulacion> requisitos;
   final bool cumpleRequisitos;
   final bool puedePostular;
+  final bool puedeRetirar;
 
   const EncuestaVotable({
     required this.encuesta,
@@ -244,23 +417,47 @@ class EncuestaVotable {
     required this.dentroDeVentana,
     required this.yaRespondio,
     this.restringida = false,
+    this.puedeParticipar = true,
+    this.puedeVotar = true,
     this.recibo,
     this.fechaRespuesta,
     this.misPostulaciones = const {},
+    this.misPostulacionesEstado = const {},
+    this.miNombre = '',
+    this.miDni = '',
     this.requisitos = const [],
     this.cumpleRequisitos = true,
     this.puedePostular = false,
+    this.puedeRetirar = false,
   });
+
+  /// True si la encuesta tiene requisitos o es del flujo de postulacion.
+  bool get esPostulacion => encuesta.esPostulacion || requisitos.isNotEmpty;
 
   factory EncuestaVotable.fromJson(Map<String, dynamic> json) {
     final rawPreguntas = json['preguntas'];
     final rawRequisitos = json['requisitos'];
     final preguntas = rawPreguntas is List
         ? rawPreguntas
-            .whereType<Map>()
-            .map((e) => EncuestaPregunta.fromJson(Map<String, dynamic>.from(e)))
-            .toList()
+              .whereType<Map>()
+              .map(
+                (e) => EncuestaPregunta.fromJson(Map<String, dynamic>.from(e)),
+              )
+              .toList()
         : <EncuestaPregunta>[];
+
+    var miDni = (json['mi_dni'] ?? '').toString();
+    if (miDni.isEmpty) {
+      for (final pregunta in preguntas) {
+        for (final opcion in pregunta.opciones) {
+          if (opcion.esMia && opcion.dni.isNotEmpty) {
+            miDni = opcion.dni;
+            break;
+          }
+        }
+        if (miDni.isNotEmpty) break;
+      }
+    }
 
     return EncuestaVotable(
       encuesta: Encuesta(
@@ -270,6 +467,11 @@ class EncuestaVotable {
         fechaInicio: json['fecha_inicio']?.toString(),
         fechaFin: json['fecha_fin']?.toString(),
         estado: (json['estado'] ?? '').toString(),
+        tipo: _tipoDesdeJson(json),
+        inscripcionInicio: json['inscripcion_inicio']?.toString(),
+        inscripcionFin: json['inscripcion_fin']?.toString(),
+        votacionInicio: json['votacion_inicio']?.toString(),
+        votacionFin: json['votacion_fin']?.toString(),
         preguntas: preguntas.length,
         opciones: 0,
         participantes: 0,
@@ -279,16 +481,28 @@ class EncuestaVotable {
       dentroDeVentana: json['dentro_de_ventana'] != false,
       yaRespondio: json['ya_respondio'] == true,
       restringida: json['restringida'] == true,
+      // Si el backend aun no envia el campo se asume habilitado, para no
+      // romper compatibilidad con despliegues anteriores.
+      puedeParticipar:
+          json['puede_participar'] != false && json['habilitado'] != false,
+      // Si el backend no manda puede_votar se conserva el comportamiento
+      // anterior (puede participar = puede votar).
+      puedeVotar:
+          json['puede_votar'] != false && json['puede_participar'] != false,
       misPostulaciones: _mapaPostulaciones(json['mis_postulaciones']),
+      misPostulacionesEstado: _mapaEstados(json['mis_postulaciones_estado']),
+      miNombre: (json['mi_nombre'] ?? '').toString(),
+      miDni: miDni,
+      puedeRetirar: json['puede_retirar'] == true,
       requisitos: rawRequisitos is List
           ? rawRequisitos
-              .whereType<Map>()
-              .map(
-                (e) => RequisitoPostulacion.fromJson(
-                  Map<String, dynamic>.from(e),
-                ),
-              )
-              .toList()
+                .whereType<Map>()
+                .map(
+                  (e) => RequisitoPostulacion.fromJson(
+                    Map<String, dynamic>.from(e),
+                  ),
+                )
+                .toList()
           : <RequisitoPostulacion>[],
       cumpleRequisitos: json['cumple_requisitos'] != false,
       puedePostular: json['puede_postular'] == true,
@@ -299,12 +513,44 @@ class EncuestaVotable {
 }
 
 Map<int, int> _mapaPostulaciones(dynamic raw) {
-  if (raw is! Map) return const {};
   final salida = <int, int>{};
+  // Si la postulacion aun no tiene puesto asignado el backend puede
+  // mandarla como lista: se toma como puesto 0.
+  if (raw is List) {
+    for (var i = 0; i < raw.length; i++) {
+      final valor = raw[i];
+      if (valor is num) {
+        salida[i] = valor.toInt();
+      } else {
+        final n = int.tryParse('$valor');
+        if (n != null) salida[i] = n;
+      }
+    }
+    return salida;
+  }
+  if (raw is! Map) return const {};
   raw.forEach((k, v) {
     final clave = int.tryParse('$k');
     final valor = v is num ? v.toInt() : int.tryParse('$v');
     if (clave != null && valor != null) salida[clave] = valor;
+  });
+  return salida;
+}
+
+Map<int, String> _mapaEstados(dynamic raw) {
+  final salida = <int, String>{};
+  if (raw is List) {
+    for (var i = 0; i < raw.length; i++) {
+      final valor = (raw[i] ?? '').toString().toUpperCase();
+      if (valor.isNotEmpty) salida[i] = valor;
+    }
+    return salida;
+  }
+  if (raw is! Map) return const {};
+  raw.forEach((k, v) {
+    final clave = int.tryParse('$k');
+    final valor = (v ?? '').toString().toUpperCase();
+    if (clave != null && valor.isNotEmpty) salida[clave] = valor;
   });
   return salida;
 }
@@ -317,11 +563,14 @@ class EncuestaService {
 
   static const Duration _timeout = Duration(seconds: 15);
 
+  /// Zona horaria y hora del servidor (para diagnosticar la programacion).
+  Map<String, dynamic> ultimoServidor = {};
+
   Map<String, String> _headers(String token) => {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-      };
+    'Content-Type': 'application/json; charset=utf-8',
+    'Accept': 'application/json',
+    'Authorization': 'Bearer $token',
+  };
 
   Exception _handleError(http.Response res) {
     try {
@@ -379,6 +628,11 @@ class EncuestaService {
     final data = _decodificar(res);
     _verificarOk(data, res);
 
+    final servidor = data['servidor'];
+    if (servidor is Map) {
+      ultimoServidor = Map<String, dynamic>.from(servidor);
+    }
+
     final rawList = data['encuestas'] as List<dynamic>? ?? const [];
     return rawList
         .whereType()
@@ -391,7 +645,10 @@ class EncuestaService {
     required int id,
   }) async {
     final res = await http
-        .get(Uri.parse('$_adminUrl?action=detalle&id=$id'), headers: _headers(token))
+        .get(
+          Uri.parse('$_adminUrl?action=detalle&id=$id'),
+          headers: _headers(token),
+        )
         .timeout(_timeout);
 
     if (res.statusCode != 200) throw _handleError(res);
@@ -404,17 +661,33 @@ class EncuestaService {
     required String token,
     required String titulo,
     String? descripcion,
+    String? tipo,
     String? fechaInicio,
     String? fechaFin,
+    String? tzOffset,
+    String? inscripcionInicio,
+    String? inscripcionFin,
+    String? votacionInicio,
+    String? votacionFin,
   }) async {
     final body = jsonEncode({
       'titulo': titulo,
       if (descripcion != null) 'descripcion': descripcion,
+      if (tipo != null) 'tipo': tipo,
       if (fechaInicio != null) 'fecha_inicio': fechaInicio,
       if (fechaFin != null) 'fecha_fin': fechaFin,
+      if (tzOffset != null) 'tz_offset': tzOffset,
+      if (inscripcionInicio != null) 'inscripcion_inicio': inscripcionInicio,
+      if (inscripcionFin != null) 'inscripcion_fin': inscripcionFin,
+      if (votacionInicio != null) 'votacion_inicio': votacionInicio,
+      if (votacionFin != null) 'votacion_fin': votacionFin,
     });
     final res = await http
-        .post(Uri.parse('$_adminUrl?action=crear'), headers: _headers(token), body: body)
+        .post(
+          Uri.parse('$_adminUrl?action=crear'),
+          headers: _headers(token),
+          body: body,
+        )
         .timeout(_timeout);
 
     if (res.statusCode != 201 && res.statusCode != 200) throw _handleError(res);
@@ -427,18 +700,46 @@ class EncuestaService {
     required int id,
     required String titulo,
     String? descripcion,
+    String? tipo,
     String? fechaInicio,
     String? fechaFin,
+    String? estado,
+    bool incluirFechas = false,
+    String? tzOffset,
+    String? inscripcionInicio,
+    String? inscripcionFin,
+    String? votacionInicio,
+    String? votacionFin,
   }) async {
     final body = jsonEncode({
       'id': id,
       'titulo': titulo,
       if (descripcion != null) 'descripcion': descripcion,
-      if (fechaInicio != null) 'fecha_inicio': fechaInicio,
-      if (fechaFin != null) 'fecha_fin': fechaFin,
+      if (tipo != null) 'tipo': tipo,
+      if (estado != null) 'estado': estado,
+      if (tzOffset != null) 'tz_offset': tzOffset,
+      if (incluirFechas) ...{
+        'fecha_inicio': fechaInicio ?? '',
+        'fecha_fin': fechaFin ?? '',
+        'inscripcion_inicio': inscripcionInicio ?? '',
+        'inscripcion_fin': inscripcionFin ?? '',
+        'votacion_inicio': votacionInicio ?? '',
+        'votacion_fin': votacionFin ?? '',
+      } else ...{
+        if (fechaInicio != null) 'fecha_inicio': fechaInicio,
+        if (fechaFin != null) 'fecha_fin': fechaFin,
+        if (inscripcionInicio != null) 'inscripcion_inicio': inscripcionInicio,
+        if (inscripcionFin != null) 'inscripcion_fin': inscripcionFin,
+        if (votacionInicio != null) 'votacion_inicio': votacionInicio,
+        if (votacionFin != null) 'votacion_fin': votacionFin,
+      },
     });
     final res = await http
-        .post(Uri.parse('$_adminUrl?action=actualizar'), headers: _headers(token), body: body)
+        .post(
+          Uri.parse('$_adminUrl?action=actualizar'),
+          headers: _headers(token),
+          body: body,
+        )
         .timeout(_timeout);
 
     if (res.statusCode != 200) throw _handleError(res);
@@ -448,8 +749,11 @@ class EncuestaService {
 
   Future<void> abrir({required String token, required int id}) async {
     final res = await http
-        .post(Uri.parse('$_adminUrl?action=abrir'),
-            headers: _headers(token), body: jsonEncode({'id': id}))
+        .post(
+          Uri.parse('$_adminUrl?action=abrir'),
+          headers: _headers(token),
+          body: jsonEncode({'id': id}),
+        )
         .timeout(_timeout);
 
     if (res.statusCode != 200) throw _handleError(res);
@@ -459,8 +763,11 @@ class EncuestaService {
 
   Future<void> cerrar({required String token, required int id}) async {
     final res = await http
-        .post(Uri.parse('$_adminUrl?action=cerrar'),
-            headers: _headers(token), body: jsonEncode({'id': id}))
+        .post(
+          Uri.parse('$_adminUrl?action=cerrar'),
+          headers: _headers(token),
+          body: jsonEncode({'id': id}),
+        )
         .timeout(_timeout);
 
     if (res.statusCode != 200) throw _handleError(res);
@@ -470,8 +777,11 @@ class EncuestaService {
 
   Future<void> eliminar({required String token, required int id}) async {
     final res = await http
-        .post(Uri.parse('$_adminUrl?action=eliminar'),
-            headers: _headers(token), body: jsonEncode({'id': id}))
+        .post(
+          Uri.parse('$_adminUrl?action=eliminar'),
+          headers: _headers(token),
+          body: jsonEncode({'id': id}),
+        )
         .timeout(_timeout);
 
     if (res.statusCode != 200) throw _handleError(res);
@@ -495,8 +805,11 @@ class EncuestaService {
       'orden': orden,
     });
     final res = await http
-        .post(Uri.parse('$_adminUrl?action=guardar_pregunta'),
-            headers: _headers(token), body: body)
+        .post(
+          Uri.parse('$_adminUrl?action=guardar_pregunta'),
+          headers: _headers(token),
+          body: body,
+        )
         .timeout(_timeout);
 
     if (res.statusCode != 200 && res.statusCode != 201) throw _handleError(res);
@@ -504,10 +817,16 @@ class EncuestaService {
     _verificarOk(data, res);
   }
 
-  Future<void> eliminarPregunta({required String token, required int id}) async {
+  Future<void> eliminarPregunta({
+    required String token,
+    required int id,
+  }) async {
     final res = await http
-        .post(Uri.parse('$_adminUrl?action=eliminar_pregunta'),
-            headers: _headers(token), body: jsonEncode({'id': id}))
+        .post(
+          Uri.parse('$_adminUrl?action=eliminar_pregunta'),
+          headers: _headers(token),
+          body: jsonEncode({'id': id}),
+        )
         .timeout(_timeout);
 
     if (res.statusCode != 200) throw _handleError(res);
@@ -541,8 +860,11 @@ class EncuestaService {
       'usuario_id': usuarioId,
     });
     final res = await http
-        .post(Uri.parse('$_adminUrl?action=guardar_opcion'),
-            headers: _headers(token), body: body)
+        .post(
+          Uri.parse('$_adminUrl?action=guardar_opcion'),
+          headers: _headers(token),
+          body: body,
+        )
         .timeout(_timeout);
 
     if (res.statusCode != 200 && res.statusCode != 201) throw _handleError(res);
@@ -552,8 +874,11 @@ class EncuestaService {
 
   Future<void> eliminarOpcion({required String token, required int id}) async {
     final res = await http
-        .post(Uri.parse('$_adminUrl?action=eliminar_opcion'),
-            headers: _headers(token), body: jsonEncode({'id': id}))
+        .post(
+          Uri.parse('$_adminUrl?action=eliminar_opcion'),
+          headers: _headers(token),
+          body: jsonEncode({'id': id}),
+        )
         .timeout(_timeout);
 
     if (res.statusCode != 200) throw _handleError(res);
@@ -561,10 +886,56 @@ class EncuestaService {
     _verificarOk(data, res);
   }
 
-  /// Usuarios activos de usuarios_app para elegir candidatos de las opciones.
-  Future<List<EncuestaUsuario>> listarUsuarios({
+  /// Lista las postulaciones (candidatos) de una encuesta con su estado.
+  Future<List<Map<String, dynamic>>> postulaciones({
     required String token,
+    required int encuestaId,
   }) async {
+    final res = await http
+        .get(
+          Uri.parse('$_adminUrl?action=postulaciones&encuesta_id=$encuestaId'),
+          headers: _headers(token),
+        )
+        .timeout(_timeout);
+
+    if (res.statusCode != 200) throw _handleError(res);
+    final data = _decodificar(res);
+    _verificarOk(data, res);
+    final raw = data['postulaciones'] as List<dynamic>? ?? const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> asignarPregunta({
+    required String token,
+    required int encuestaId,
+    required int opcionId,
+    required int preguntaId,
+    String estado = 'APROBADA',
+  }) async {
+    final res = await http
+        .post(
+          Uri.parse('$_adminUrl?action=asignar_pregunta'),
+          headers: _headers(token),
+          body: jsonEncode({
+            'encuesta_id': encuestaId,
+            'opcion_id': opcionId,
+            'pregunta_id': preguntaId,
+            'estado': estado,
+          }),
+        )
+        .timeout(_timeout);
+
+    if (res.statusCode != 200) throw _handleError(res);
+    final data = _decodificar(res);
+    _verificarOk(data, res);
+    return data;
+  }
+
+  /// Usuarios activos de usuarios_app para elegir candidatos de las opciones.
+  Future<List<EncuestaUsuario>> listarUsuarios({required String token}) async {
     final res = await http
         .get(Uri.parse('$_adminUrl?action=usuarios'), headers: _headers(token))
         .timeout(_timeout);
@@ -580,32 +951,15 @@ class EncuestaService {
         .toList();
   }
 
-  /// Rellena la foto (y el area) de las opciones que ya estan vinculadas a
-  /// un usuario del portal pero que se guardaron sin foto.
-  Future<Map<String, dynamic>> sincronizarFotos({
-    required String token,
-    required int encuestaId,
-  }) async {
-    final res = await http
-        .post(
-          Uri.parse('$_adminUrl?action=sincronizar_fotos'),
-          headers: _headers(token),
-          body: jsonEncode({'encuesta_id': encuestaId}),
-        )
-        .timeout(_timeout);
-
-    if (res.statusCode != 200) throw _handleError(res);
-    final data = _decodificar(res);
-    _verificarOk(data, res);
-    return data;
-  }
-
   Future<Map<String, dynamic>> participacion({
     required String token,
     required int id,
-  }) async {    final res = await http
-        .get(Uri.parse('$_adminUrl?action=participacion&id=$id'),
-            headers: _headers(token))
+  }) async {
+    final res = await http
+        .get(
+          Uri.parse('$_adminUrl?action=participacion&id=$id'),
+          headers: _headers(token),
+        )
         .timeout(_timeout);
 
     if (res.statusCode != 200) throw _handleError(res);
@@ -619,8 +973,10 @@ class EncuestaService {
     required int id,
   }) async {
     final res = await http
-        .get(Uri.parse('$_adminUrl?action=resultados&id=$id'),
-            headers: _headers(token))
+        .get(
+          Uri.parse('$_adminUrl?action=resultados&id=$id'),
+          headers: _headers(token),
+        )
         .timeout(_timeout);
 
     if (res.statusCode != 200) throw _handleError(res);
@@ -649,8 +1005,7 @@ class EncuestaService {
   }
 
   /// Personal habilitado a votar en una encuesta.
-  /// Si la lista viene vacia, la encuesta queda abierta a todo el personal
-  /// con el permiso VOTAR_ELECCIONES.
+  /// Si la lista viene vacia, nadie queda habilitado para votar.
   Future<Map<String, dynamic>> guardarVotantes({
     required String token,
     required int encuestaId,
@@ -721,6 +1076,7 @@ class EncuestaService {
     required String tipo,
     required String valor,
     String descripcion = '',
+    bool obligatorio = true,
   }) async {
     final res = await http
         .post(
@@ -731,6 +1087,7 @@ class EncuestaService {
             'tipo': tipo,
             'valor': valor,
             'descripcion': descripcion,
+            'obligatorio': obligatorio,
           }),
         )
         .timeout(_timeout);
@@ -767,6 +1124,10 @@ class EncuestaService {
     required int encuestaId,
     required int preguntaId,
     String propuesta = '',
+    List<int> requisitosCumplidos = const [],
+    List<int> opcionesCumplidas = const [],
+    String nombre = '',
+    String dni = '',
   }) async {
     final res = await http
         .post(
@@ -776,6 +1137,10 @@ class EncuestaService {
             'encuesta_id': encuestaId,
             'pregunta_id': preguntaId,
             'propuesta': propuesta,
+            'requisitos_cumplidos': requisitosCumplidos,
+            'opciones_cumplidas': opcionesCumplidas,
+            if (nombre.isNotEmpty) 'nombre': nombre,
+            if (dni.isNotEmpty) 'dni': dni,
           }),
         )
         .timeout(_timeout);
@@ -815,8 +1180,11 @@ class EncuestaService {
       'respuestas': respuestas,
     });
     final res = await http
-        .post(Uri.parse('$_userUrl?action=responder'),
-            headers: _headers(token), body: body)
+        .post(
+          Uri.parse('$_userUrl?action=responder'),
+          headers: _headers(token),
+          body: body,
+        )
         .timeout(_timeout);
 
     if (res.statusCode != 200 && res.statusCode != 201) throw _handleError(res);
