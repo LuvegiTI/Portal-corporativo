@@ -15,6 +15,7 @@ Future<void> mostrarDialogoRequisitos({
   required int encuestaId,
 }) async {
   List<RequisitoPostulacion> requisitos = [];
+  String? errorCarga;
 
   try {
     requisitos = await service.listarRequisitos(
@@ -22,14 +23,9 @@ Future<void> mostrarDialogoRequisitos({
       encuestaId: encuestaId,
     );
   } catch (e) {
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(MensajeError.desdeExcepcion(e)),
-        backgroundColor: LuvegiColors.error,
-      ),
-    );
-    return;
+    // Si no se pudieron cargar, el dialogo se abre igual mostrando el
+    // error: nunca se queda sin ventana.
+    errorCarga = MensajeError.desdeExcepcion(e);
   }
   if (!context.mounted) return;
 
@@ -41,41 +37,83 @@ Future<void> mostrarDialogoRequisitos({
       builder: (ctx, setDialogState) {
         return AlertDialog(
           title: const Text('Requisitos de postulacion'),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460, maxHeight: 560),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: LuvegiColors.menuHover,
-                    borderRadius: BorderRadius.circular(LuvegiRadius.sm),
-                  ),
-                  child: Text(
-                    'El personal solo puede postularse si cumple TODOS estos '
-                    'requisitos. Si la encuesta no tiene ninguno, puede '
-                    'postularse cualquiera con permiso de votar.',
-                    style: LuvegiText.caption,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (requisitos.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Text(
-                      'Todavia no hay requisitos en esta encuesta.',
-                      style: LuvegiText.bodySecondary,
+          content: SizedBox(
+            // Ancho fijo: el AlertDialog calcula el ancho intrinseco del
+            // contenido y un viewport (scroll) no lo soporta.
+            width: (MediaQuery.sizeOf(ctx).width - 80).clamp(240.0, 460.0),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (errorCarga != null) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: LuvegiColors.error.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(LuvegiRadius.sm),
+                        border: Border.all(
+                          color: LuvegiColors.error.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.error_outline,
+                            size: 18,
+                            color: LuvegiColors.error,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'No se pudieron cargar los requisitos: '
+                              '$errorCarga',
+                              style: LuvegiText.caption.copyWith(
+                                color: LuvegiColors.error,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  )
-                else
-                  Flexible(
-                    child: ListView.builder(
+                    const SizedBox(height: 12),
+                  ],
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: LuvegiColors.menuHover,
+                      borderRadius: BorderRadius.circular(LuvegiRadius.sm),
+                    ),
+                    child: Text(
+                      'El personal vera estos requisitos al postularse y debera '
+                      'marcar todos para que su postulacion se guarde. Si la '
+                      'encuesta no tiene ninguno, puede postularse cualquiera '
+                      'con permiso de votar.',
+                      style: LuvegiText.caption,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (requisitos.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text(
+                        'Todavia no hay requisitos en esta encuesta.',
+                        style: LuvegiText.bodySecondary,
+                      ),
+                    )
+                  else
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
                       itemCount: requisitos.length,
                       itemBuilder: (_, i) {
                         final r = requisitos[i];
@@ -84,7 +122,9 @@ Future<void> mostrarDialogoRequisitos({
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: LuvegiColors.surface,
-                            borderRadius: BorderRadius.circular(LuvegiRadius.sm),
+                            borderRadius: BorderRadius.circular(
+                              LuvegiRadius.sm,
+                            ),
                             border: Border.all(color: LuvegiColors.border),
                           ),
                           child: Row(
@@ -122,11 +162,11 @@ Future<void> mostrarDialogoRequisitos({
                                       token: token,
                                       id: r.id,
                                     );
-                                    final nuevos =
-                                        await service.listarRequisitos(
-                                      token: token,
-                                      encuestaId: encuestaId,
-                                    );
+                                    final nuevos = await service
+                                        .listarRequisitos(
+                                          token: token,
+                                          encuestaId: encuestaId,
+                                        );
                                     setDialogState(() => requisitos = nuevos);
                                   } catch (e) {
                                     if (!ctx.mounted) return;
@@ -152,33 +192,37 @@ Future<void> mostrarDialogoRequisitos({
                         );
                       },
                     ),
+                  const SizedBox(height: 8),
+                  _FormularioAgregar(
+                    tipos: tipos,
+                    onAgregar: (tipo, valor, descripcion, obligatorio) async {
+                      try {
+                        await service.guardarRequisito(
+                          token: token,
+                          encuestaId: encuestaId,
+                          tipo: tipo,
+                          valor: valor,
+                          descripcion: descripcion,
+                          obligatorio: obligatorio,
+                        );
+                        final nuevos = await service.listarRequisitos(
+                          token: token,
+                          encuestaId: encuestaId,
+                        );
+                        setDialogState(() => requisitos = nuevos);
+                      } catch (e) {
+                        if (!ctx.mounted) return;
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(
+                            content: Text(MensajeError.desdeExcepcion(e)),
+                            backgroundColor: LuvegiColors.error,
+                          ),
+                        );
+                      }
+                    },
                   ),
-                const SizedBox(height: 8),
-                _formularioAgregar(tipos, (tipo, valor, descripcion) async {
-                  try {
-                    await service.guardarRequisito(
-                      token: token,
-                      encuestaId: encuestaId,
-                      tipo: tipo,
-                      valor: valor,
-                      descripcion: descripcion,
-                    );
-                    final nuevos = await service.listarRequisitos(
-                      token: token,
-                      encuestaId: encuestaId,
-                    );
-                    setDialogState(() => requisitos = nuevos);
-                  } catch (e) {
-                    if (!ctx.mounted) return;
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(
-                        content: Text(MensajeError.desdeExcepcion(e)),
-                        backgroundColor: LuvegiColors.error,
-                      ),
-                    );
-                  }
-                }),
-              ],
+                ],
+              ),
             ),
           ),
           actions: [
@@ -194,90 +238,137 @@ Future<void> mostrarDialogoRequisitos({
 }
 
 /// Formulario para agregar un requisito nuevo.
-Widget _formularioAgregar(
-  Map<String, String> tipos,
-  Future<void> Function(String tipo, String valor, String descripcion) onAgregar,
-) {
-  var tipo = tipos.keys.first;
-  final valorCtrl = TextEditingController();
-  final descCtrl = TextEditingController();
-  var guardando = false;
+class _FormularioAgregar extends StatefulWidget {
+  final Map<String, String> tipos;
+  final Future<void> Function(
+    String tipo,
+    String valor,
+    String descripcion,
+    bool obligatorio,
+  )
+  onAgregar;
 
-  return StatefulBuilder(
-    builder: (ctx, setState) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Divider(height: 1),
-          const SizedBox(height: 12),
-          Text(
-            'AGREGAR REQUISITO',
-            style: LuvegiText.caption.copyWith(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.6,
-              color: LuvegiColors.textSecondary,
-            ),
+  const _FormularioAgregar({required this.tipos, required this.onAgregar});
+
+  @override
+  State<_FormularioAgregar> createState() => _FormularioAgregarState();
+}
+
+class _FormularioAgregarState extends State<_FormularioAgregar> {
+  final TextEditingController valorCtrl = TextEditingController();
+  final TextEditingController descCtrl = TextEditingController();
+  late String tipo = widget.tipos.keys.first;
+  bool guardando = false;
+  bool obligatorio = true;
+
+  @override
+  void dispose() {
+    valorCtrl.dispose();
+    descCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 1),
+        const SizedBox(height: 12),
+        Text(
+          'AGREGAR REQUISITO',
+          style: LuvegiText.caption.copyWith(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.6,
+            color: LuvegiColors.textSecondary,
           ),
-          const SizedBox(height: 10),
-          DropdownButtonFormField<String>(
-            initialValue: tipo,
+        ),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<String>(
+          initialValue: tipo,
+          isDense: true,
+          decoration: const InputDecoration(
+            labelText: 'Tipo de requisito',
             isDense: true,
-            decoration: const InputDecoration(
-              labelText: 'Tipo de requisito',
-              isDense: true,
-            ),
-            items: tipos.entries
-                .map(
-                  (e) => DropdownMenuItem(
-                    value: e.key,
-                    child: Text(e.value, style: const TextStyle(fontSize: 13)),
-                  ),
-                )
-                .toList(),
-            onChanged: (v) => setState(() => tipo = v ?? tipo),
           ),
-          const SizedBox(height: 10),
-          if (tipo != 'NO_CESADO')
-            TextField(
-              controller: valorCtrl,
-              decoration: InputDecoration(
-                labelText: _pistaValor(tipo),
-                isDense: true,
-              ),
-            ),
-          const SizedBox(height: 10),
+          items: widget.tipos.entries
+              .map(
+                (e) => DropdownMenuItem(
+                  value: e.key,
+                  child: Text(e.value, style: const TextStyle(fontSize: 13)),
+                ),
+              )
+              .toList(),
+          onChanged: (v) => setState(() => tipo = v ?? tipo),
+        ),
+        const SizedBox(height: 10),
+        if (tipo != 'NO_CESADO' && tipo != 'MANUAL') ...[
           TextField(
-            controller: descCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Descripcion (opcional)',
+            controller: valorCtrl,
+            decoration: InputDecoration(
+              labelText: _pistaValor(tipo),
               isDense: true,
             ),
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: guardando
-                  ? null
-                  : () async {
-                      setState(() => guardando = true);
-                      await onAgregar(tipo, valorCtrl.text.trim(), descCtrl.text.trim());
-                      valorCtrl.clear();
-                      descCtrl.clear();
-                      setState(() => guardando = false);
-                    },
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('Agregar requisito'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: LuvegiColors.secondary,
-              ),
+          const SizedBox(height: 10),
+        ],
+        TextField(
+          controller: descCtrl,
+          decoration: InputDecoration(
+            labelText: tipo == 'MANUAL'
+                ? 'Descripcion del requisito'
+                : 'Descripcion (opcional)',
+            isDense: true,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Checkbox(
+              value: obligatorio,
+              onChanged: (v) => setState(() => obligatorio = v ?? true),
+              visualDensity: VisualDensity.compact,
+            ),
+            const SizedBox(width: 6),
+            const Text(
+              'Obligatorio (debe marcarlo al postularse)',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: guardando
+                ? null
+                : () async {
+                    setState(() => guardando = true);
+                    await widget.onAgregar(
+                      tipo,
+                      valorCtrl.text.trim(),
+                      descCtrl.text.trim(),
+                      obligatorio,
+                    );
+                    if (!mounted) return;
+                    valorCtrl.clear();
+                    descCtrl.clear();
+                    setState(() {
+                      guardando = false;
+                      obligatorio = true;
+                    });
+                  },
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('Agregar requisito'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: LuvegiColors.secondary,
             ),
           ),
-        ],
-      );
-    },
-  );
+        ),
+      ],
+    );
+  }
 }
 
 String _pistaValor(String tipo) {
@@ -292,6 +383,8 @@ String _pistaValor(String tipo) {
       return 'Area requerida (ej. MANTENIMIENTO)';
     case 'PUESTO':
       return 'Puesto requerido';
+    case 'MANUAL':
+      return 'Texto del requisito';
     default:
       return 'Valor';
   }
@@ -311,6 +404,8 @@ String _etiquetaTipo(String tipo) {
       return 'Area';
     case 'PUESTO':
       return 'Puesto';
+    case 'MANUAL':
+      return 'Requisito manual';
     default:
       return tipo;
   }
@@ -323,4 +418,5 @@ const Map<String, String> _tiposDisponibles = {
   'NO_CESADO': 'No estar cesado',
   'AREA': 'Area',
   'PUESTO': 'Puesto',
+  'MANUAL': 'Requisito manual',
 };

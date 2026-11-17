@@ -150,6 +150,79 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
     }
   }
 
+  /// Agrega o quita un modulo completo a todos los usuarios activos.
+  /// [modo] 'agregar' conserva los permisos existentes; 'quitar' los elimina.
+  Future<void> _aplicarMasivo({
+    required List<int> permisos,
+    required String modo,
+    required String etiqueta,
+  }) async {
+    if (_saving) return;
+    if (permisos.isEmpty) {
+      _snack(
+        'Selecciona al menos un permiso de "$etiqueta" para aplicar.',
+        isError: true,
+      );
+      return;
+    }
+
+    final esAgregar = modo == 'agregar';
+    final confirma = await _showConfirmDialog(
+      title: esAgregar
+          ? 'Dar marcados de "$etiqueta" a todos'
+          : 'Quitar marcados de "$etiqueta" a todos',
+      body: esAgregar
+          ? 'Se agregarán los ${permisos.length} permisos seleccionados de '
+                '"$etiqueta" a los ${_usuarios.length} usuarios activos.\n\n'
+                'Los permisos que ya tengan se conservan.'
+          : 'Se quitarán los ${permisos.length} permisos seleccionados de '
+                '"$etiqueta" a los ${_usuarios.length} usuarios activos.\n\n'
+                'Los demás permisos de cada usuario se conservan.',
+      confirmLabel: esAgregar ? 'AGREGAR' : 'QUITAR',
+      confirmColor: esAgregar ? _primaryBlue : Colors.redAccent,
+    );
+    if (confirma != true) return;
+
+    setState(() => _saving = true);
+    try {
+      final ok = await _service.guardarMasivo(widget.token, permisos, modo);
+      if (!ok) {
+        _snack(
+          'No se pudieron actualizar los permisos masivos.',
+          isError: true,
+        );
+        return;
+      }
+
+      try {
+        _auditoria
+            .registrarActividad(
+              widget.token,
+              accion: 'EDITAR_PERMISOS_MASIVO',
+              entidad: 'usuario',
+              detalle:
+                  'modo=$modo modulo=$etiqueta permisos_ids=${permisos.join(',')} '
+                  'usuarios=${_usuarios.length}',
+            )
+            .catchError((_) {});
+      } catch (_) {}
+
+      // El usuario seleccionado tambien fue afectado: refresca sus checks.
+      if (_usuarioId != null) {
+        await _cargarPermisosUsuario(_usuarioId!, esCopia: false);
+      }
+      _snack(
+        esAgregar
+            ? '"$etiqueta" agregado a ${_usuarios.length} usuarios.'
+            : '"$etiqueta" quitado a ${_usuarios.length} usuarios.',
+      );
+    } catch (e) {
+      _snack(MensajeError.desdeExcepcion(e), isError: true);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _cambiarUsuario(int nuevoId) async {
     if (_hayPendientes) {
       final descarta = await _showConfirmDialog(
@@ -473,6 +546,12 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
           ),
           const SizedBox(height: 15),
           _buildCloneBar(),
+          const SizedBox(height: 8),
+          Text(
+            'Tip: marca los permisos que quieras y usa el ícono de grupo del '
+            'módulo para darlos o quitarlos a todos los usuarios activos.',
+            style: TextStyle(color: _textLight, fontSize: 10),
+          ),
         ],
       ),
     );
@@ -531,64 +610,103 @@ class _AdminRolesPermisosPageState extends State<AdminRolesPermisosPage> {
         child: Material(
           type: MaterialType.transparency,
           child: Theme(
-          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-          child: ExpansionTile(
-            initiallyExpanded: true,
-            iconColor: _primaryBlue,
-            title: Row(
-              children: [
-                Semantics(
-                  label: 'Seleccionar todos los permisos de ${grupo.key}',
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: Checkbox(
-                      value: todosActivos
-                          ? true
-                          : (algunoActivo ? null : false),
-                      tristate: true,
-                      activeColor: _primaryBlue,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              initiallyExpanded: true,
+              iconColor: _primaryBlue,
+              title: Row(
+                children: [
+                  Semantics(
+                    label: 'Seleccionar todos los permisos de ${grupo.key}',
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: Checkbox(
+                        value: todosActivos
+                            ? true
+                            : (algunoActivo ? null : false),
+                        tristate: true,
+                        activeColor: _primaryBlue,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        onChanged: (_) => _toggleGrupo(permisos, !todosActivos),
                       ),
-                      onChanged: (_) => _toggleGrupo(permisos, !todosActivos),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    grupo.key,
-                    style: TextStyle(
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      grupo.key,
+                      style: TextStyle(
+                        color: _primaryBlue,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _primaryBlue.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '$activosGrupo/$totalGrupo',
+                      style: TextStyle(
+                        color: _primaryBlue,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: 'Aplicar "${grupo.key}" a todos los usuarios',
+                    icon: Icon(
+                      Icons.groups_outlined,
+                      size: 18,
                       color: _primaryBlue,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
                     ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _primaryBlue.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '$activosGrupo/$totalGrupo',
-                    style: TextStyle(
-                      color: _primaryBlue,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
+                    padding: EdgeInsets.zero,
+                    onSelected: (modo) => _aplicarMasivo(
+                      // Solo los permisos marcados de este modulo.
+                      permisos: permisos
+                          .where((p) => _checks[p['id']] == true)
+                          .map((p) => int.parse(p['id'].toString()))
+                          .toList(),
+                      modo: modo,
+                      etiqueta: grupo.key,
                     ),
+
+                    itemBuilder: (ctx) => const [
+                      PopupMenuItem(
+                        value: 'agregar',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.add_circle_outline, size: 18),
+                          title: Text('Dar marcados a todos'),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'quitar',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.remove_circle_outline, size: 18),
+                          title: Text('Quitar marcados de todos'),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
+                ],
+              ),
+              children: permisos.map((p) => _buildPermissionRow(p)).toList(),
             ),
-            children: permisos.map((p) => _buildPermissionRow(p)).toList(),
           ),
-        ),
         ),
       ),
     );
@@ -957,31 +1075,31 @@ class _ModalBuscadorUsuarioState extends State<_ModalBuscadorUsuario> {
                         return Material(
                           type: MaterialType.transparency,
                           child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                          ),
-                          leading: CircleAvatar(
-                            radius: 18,
-                            backgroundColor: widget.colorPrincipal.withValues(
-                              alpha: 0.1,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8,
                             ),
-                            child: Text(
-                              nombre.isNotEmpty ? nombre[0] : '?',
-                              style: TextStyle(
-                                color: widget.colorPrincipal,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
+                            leading: CircleAvatar(
+                              radius: 18,
+                              backgroundColor: widget.colorPrincipal.withValues(
+                                alpha: 0.1,
+                              ),
+                              child: Text(
+                                nombre.isNotEmpty ? nombre[0] : '?',
+                                style: TextStyle(
+                                  color: widget.colorPrincipal,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
                               ),
                             ),
+                            title: _buildHighlightedText(
+                              nombre,
+                              query,
+                              widget.colorTexto,
+                              widget.colorPrincipal,
+                            ),
+                            onTap: () => widget.onSeleccionado(u['id'] as int),
                           ),
-                          title: _buildHighlightedText(
-                            nombre,
-                            query,
-                            widget.colorTexto,
-                            widget.colorPrincipal,
-                          ),
-                          onTap: () => widget.onSeleccionado(u['id'] as int),
-                        ),
                         );
                       },
                     ),

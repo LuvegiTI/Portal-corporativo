@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../services/auth_service.dart';
 import '../../services/encuesta_service.dart';
 import '../../theme/luvegi_colors.dart';
 import '../../theme/luvegi_radius.dart';
@@ -26,15 +29,43 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
   String? _error;
   List<EncuestaVotable> _encuestas = [];
 
+  /// encuestaId -> ids de requisitos que el usuario declaro cumplir.
+  final Map<int, Set<int>> _requisitosMarcados = {};
+
+  /// Nombre del usuario en sesion, para mostrarlo al postularse.
+  String _miNombre = '';
+
+  Timer? _temporizador;
+
   @override
   void initState() {
     super.initState();
+    _cargarNombre();
     _cargar();
+    // Refresco silencioso: cuando la postulacion se abre sola por la hora
+    // programada, el personal la ve sin recargar la pagina.
+    _temporizador = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted || _cargando) return;
+      _cargar(silencioso: true);
+    });
   }
 
-  Future<void> _cargar() async {
+  @override
+  void dispose() {
+    _temporizador?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _cargarNombre() async {
+    final sesion = await AuthService().getSession();
+    if (!mounted || sesion == null) return;
+    setState(() => _miNombre = (sesion['nombre'] ?? '').toString());
+  }
+
+  Future<void> _cargar({bool silencioso = false}) async {
+    if (!mounted) return;
     setState(() {
-      _cargando = true;
+      if (!silencioso) _cargando = true;
       _error = null;
     });
     try {
@@ -42,12 +73,28 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
         token: widget.token,
       );
       if (!mounted) return;
-      setState(() => _encuestas = lista);
+      setState(() {
+        // Solo aparecen las postulaciones que RRHH ya abrio (con los
+        // requisitos registrados). Si el personal ya se inscribio, se
+        // muestra aunque se cierre, para poder ver o retirar su registro.
+        _encuestas = lista
+            .where(
+              (e) =>
+                  e.esPostulacion &&
+                  (e.misPostulaciones.isNotEmpty ||
+                      (e.encuesta.estado == 'ABIERTA' &&
+                          e.encuesta.postulacionesAbiertas)),
+            )
+            .toList();
+      });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = MensajeError.desdeExcepcion(e));
+      // Un fallo del refresco silencioso no debe borrar lo que ya se ve.
+      if (!silencioso) {
+        setState(() => _error = MensajeError.desdeExcepcion(e));
+      }
     } finally {
-      if (mounted) setState(() => _cargando = false);
+      if (mounted && !silencioso) setState(() => _cargando = false);
     }
   }
 
@@ -81,7 +128,11 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
       return _card(
         child: Column(
           children: [
-            const Icon(Icons.error_outline, color: LuvegiColors.error, size: 42),
+            const Icon(
+              Icons.error_outline,
+              color: LuvegiColors.error,
+              size: 42,
+            ),
             const SizedBox(height: LuvegiSpacing.md),
             Text(_error!, textAlign: TextAlign.center, style: LuvegiText.body),
             const SizedBox(height: LuvegiSpacing.md),
@@ -108,7 +159,9 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
             Text('No hay encuestas abiertas', style: LuvegiText.title),
             const SizedBox(height: LuvegiSpacing.xs),
             Text(
-              'Cuando RRHH abra una encuesta aparecra aqui para postularte.',
+              'Para postularte debe haber una postulación con requisitos '
+              'registrados y la inscripción abierta. Si crees que es un '
+              'error, comunícate con RRHH.',
               textAlign: TextAlign.center,
               style: LuvegiText.bodySecondary,
             ),
@@ -117,91 +170,244 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
       );
     }
 
+    // Las encuestas en las que ya te postulaste salen de la lista principal:
+    // se resumen al final para que puedas ver el estado o retirarla.
+    final pendientes = _encuestas
+        .where((e) => e.misPostulaciones.isEmpty)
+        .toList();
+    final realizadas = _encuestas
+        .where((e) => e.misPostulaciones.isNotEmpty)
+        .toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Postulaciones', style: LuvegiText.title.copyWith(fontSize: 20)),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Postulaciones',
+                style: LuvegiText.title.copyWith(fontSize: 20),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Actualizar',
+              onPressed: () => _cargar(),
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
         const SizedBox(height: 4),
         Text(
-          'Elige en que encuesta te quieres postular como candidato.',
+          pendientes.isEmpty
+              ? 'Ya te postulaste en todas las encuestas disponibles.'
+              : 'Elige en que encuesta te quieres postular como candidato.',
           style: LuvegiText.bodySecondary,
         ),
         const SizedBox(height: LuvegiSpacing.lg),
-        ..._encuestas.map(_buildEncuesta),
+        ...pendientes.map(_buildEncuesta),
+        if (realizadas.isNotEmpty) ...[
+          const SizedBox(height: LuvegiSpacing.lg),
+          _buildSeccionPostuladas(realizadas),
+        ],
+      ],
+    );
+  }
+
+  /// Resumen de las encuestas en las que ya se postuló el usuario.
+  Widget _buildSeccionPostuladas(List<EncuestaVotable> lista) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Tus postulaciones',
+          style: LuvegiText.title.copyWith(fontSize: 16),
+        ),
+        const SizedBox(height: LuvegiSpacing.sm),
+        ...lista.map(
+          (e) => Padding(
+            padding: const EdgeInsets.only(bottom: LuvegiSpacing.sm),
+            child: _card(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    e.encuesta.titulo,
+                    style: LuvegiText.body.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: LuvegiSpacing.sm),
+                  _buildEstadoPostulacion(e),
+                ],
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
 
   Widget _buildEncuesta(EncuestaVotable e) {
-    final cumple = e.cumpleRequisitos;
+    // Clave estable para que el refresco no recree la tarjeta.
     final yaPostulo = e.misPostulaciones.isNotEmpty;
+    final enInscripcion = e.encuesta.postulacionesAbiertas;
+    final marcados = _requisitosMarcados[e.encuesta.id] ?? {};
+    final requisitosObligatorios = e.requisitos
+        .where((r) => r.obligatorio)
+        .toList();
+    final todosMarcados = requisitosObligatorios.every(
+      (r) => marcados.contains(r.id),
+    );
+    final puedePostular = !yaPostulo && enInscripcion && todosMarcados;
+
+    // Texto y color del estado segun donde este el proceso.
+    final String chipTexto;
+    final Color estadoChipColor;
+    if (yaPostulo) {
+      chipTexto = 'Ya postulado';
+      estadoChipColor = LuvegiColors.secondary;
+    } else if (!enInscripcion) {
+      chipTexto = 'Inscripción cerrada';
+      estadoChipColor = LuvegiColors.textSecondary;
+    } else if (!todosMarcados) {
+      chipTexto = 'Marca los requisitos';
+      estadoChipColor = LuvegiColors.warning;
+    } else {
+      chipTexto = 'Puedes postularte';
+      estadoChipColor = LuvegiColors.success;
+    }
 
     return Padding(
+      key: ValueKey('post-${e.encuesta.id}'),
       padding: const EdgeInsets.only(bottom: LuvegiSpacing.lg),
       child: _card(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(e.encuesta.titulo, style: LuvegiText.title),
-                ),
-                Container(
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final titulo = Text(e.encuesta.titulo, style: LuvegiText.title);
+                final chip = Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: cumple
-                        ? LuvegiColors.success.withValues(alpha: 0.12)
-                        : LuvegiColors.error.withValues(alpha: 0.10),
+                    color: estadoChipColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    cumple ? 'Puedes postularte' : 'No cumples los requisitos',
+                    chipTexto,
                     style: LuvegiText.caption.copyWith(
                       fontWeight: FontWeight.w800,
-                      color: cumple ? LuvegiColors.success : LuvegiColors.error,
+                      color: estadoChipColor,
                     ),
                   ),
-                ),
-              ],
+                );
+
+                // En pantallas estrechas el estado pasa debajo del titulo.
+                if (constraints.maxWidth < 420) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      titulo,
+                      const SizedBox(height: LuvegiSpacing.sm),
+                      chip,
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: titulo),
+                    const SizedBox(width: LuvegiSpacing.sm),
+                    chip,
+                  ],
+                );
+              },
             ),
             if (e.encuesta.descripcion.isNotEmpty) ...[
               const SizedBox(height: LuvegiSpacing.sm),
               Text(e.encuesta.descripcion, style: LuvegiText.bodySecondary),
             ],
-            if (e.requisitos.isNotEmpty) ...[
+            if (!yaPostulo && e.requisitos.isNotEmpty) ...[
               const SizedBox(height: LuvegiSpacing.md),
-              tarjetaRequisitos(e.requisitos),
+              tarjetaRequisitos(
+                e.requisitos,
+                marcados: marcados,
+                onCambio: (id, activo) {
+                  setState(() {
+                    final actual = _requisitosMarcados[e.encuesta.id] ?? {};
+                    if (activo) {
+                      actual.add(id);
+                    } else {
+                      actual.remove(id);
+                    }
+                    _requisitosMarcados[e.encuesta.id] = actual;
+                  });
+                },
+              ),
             ],
             if (yaPostulo) ...[
               const SizedBox(height: LuvegiSpacing.md),
-              Row(
-                children: [
-                  const Icon(
-                    Icons.how_to_reg,
-                    size: 16,
-                    color: LuvegiColors.success,
+              _buildEstadoPostulacion(e),
+            ] else if (enInscripcion) ...[
+              const SizedBox(height: LuvegiSpacing.md),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: puedePostular ? () => _postular(e) : null,
+                  icon: const Icon(Icons.how_to_reg_outlined, size: 16),
+                  label: const Text('Postularme en esta encuesta'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: LuvegiColors.secondary,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Ya te postulaste en ${e.misPostulaciones.length} '
-                      'pregunta(s) de esta encuesta.',
-                      style: LuvegiText.caption.copyWith(
-                        color: LuvegiColors.success,
-                        fontWeight: FontWeight.w700,
-                      ),
+                ),
+              ),
+              if (!todosMarcados && requisitosObligatorios.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Marca todos los requisitos obligatorios para poder postularte.',
+                    style: LuvegiText.caption.copyWith(
+                      color: LuvegiColors.error,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
                     ),
                   ),
-                ],
-              ),
+                ),
             ],
-            if (e.preguntas.isNotEmpty) ...[
+            if (!yaPostulo && !enInscripcion) ...[
               const SizedBox(height: LuvegiSpacing.md),
-              ...e.preguntas.map((p) => _buildPregunta(e, p)),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: LuvegiColors.error.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(LuvegiRadius.sm),
+                  border: Border.all(
+                    color: LuvegiColors.error.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.lock_outline,
+                      size: 20,
+                      color: LuvegiColors.error,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'La inscripción de esta encuesta ya está cerrada.',
+                        style: LuvegiText.bodySecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ],
         ),
@@ -209,79 +415,92 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
     );
   }
 
-  Widget _buildPregunta(EncuestaVotable e, EncuestaPregunta pregunta) {
-    final miOpcion = e.misPostulaciones[pregunta.id];
-    final puede = e.cumpleRequisitos && e.puedeResponder;
+  Widget _buildEstadoPostulacion(EncuestaVotable e) {
+    final postulacion = e.misPostulaciones.entries.first;
+    // La postulacion no pasa por validacion: queda registrada tal cual.
+    final titulo = 'Postulación registrada';
+    final detalle =
+        'Tu registro quedó guardado con tu usuario y número de DNI.';
 
     return Container(
-      margin: const EdgeInsets.only(top: 8),
+      width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: LuvegiColors.surface,
+        color: LuvegiColors.success.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(LuvegiRadius.sm),
-        border: Border.all(color: LuvegiColors.border),
+        border: Border.all(color: LuvegiColors.success.withValues(alpha: 0.35)),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            pregunta.nombre,
-            style: LuvegiText.body.copyWith(fontWeight: FontWeight.w700),
+          const Icon(
+            Icons.check_circle_outline,
+            size: 22,
+            color: LuvegiColors.success,
           ),
-          const SizedBox(height: 8),
-          if (miOpcion != null)
-            Row(
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
-                  Icons.check_circle,
-                  size: 16,
-                  color: LuvegiColors.success,
+                Text(
+                  titulo,
+                  style: LuvegiText.body.copyWith(
+                    color: LuvegiColors.success,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Te postulaste como candidato',
-                    style: LuvegiText.caption.copyWith(
-                      color: LuvegiColors.success,
-                      fontWeight: FontWeight.w700,
+                const SizedBox(height: 4),
+                Text(detalle, style: LuvegiText.bodySecondary),
+                if (e.puedeRetirar) ...[
+                  const SizedBox(height: 4),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () => _retirar(e, postulacion.value),
+                      icon: const Icon(Icons.undo, size: 16),
+                      label: const Text('Retirar postulación'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: LuvegiColors.textSecondary,
+                        visualDensity: VisualDensity.compact,
+                      ),
                     ),
                   ),
-                ),
-                TextButton(
-                  onPressed: () => _retirar(e, miOpcion),
-                  style: TextButton.styleFrom(
-                    foregroundColor: LuvegiColors.textSecondary,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  child: const Text('Retirar'),
-                ),
+                ],
               ],
-            )
-          else
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: puede ? () => _postular(e, pregunta) : null,
-                icon: const Icon(Icons.how_to_reg_outlined, size: 16),
-                label: const Text('Postularme en esta pregunta'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: LuvegiColors.secondary,
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                ),
-              ),
             ),
+          ),
         ],
       ),
     );
   }
 
-  Future<void> _postular(EncuestaVotable e, EncuestaPregunta pregunta) async {
+  Future<void> _postular(EncuestaVotable e) async {
+    final preguntaRequisitos = e.preguntas.isNotEmpty
+        ? e.preguntas.first
+        : null;
+    final opcionesRequisito = e.requisitos.isEmpty && preguntaRequisitos != null
+        ? requisitosDesdeOpciones(preguntaRequisitos)
+        : const <EncuestaOpcion>[];
     final ok = await mostrarDialogoPostular(
       context: context,
       service: _service,
       token: widget.token,
       encuestaId: e.encuesta.id,
-      pregunta: pregunta,
+      pregunta: EncuestaPregunta(
+        id: 0,
+        encuestaId: e.encuesta.id,
+        nombre: e.encuesta.titulo,
+        descripcion: '',
+        orden: 0,
+        opciones: const [],
+      ),
+      requisitos: e.requisitos,
+      opcionesRequisito: opcionesRequisito,
+      requisitosPreviamenteMarcados:
+          _requisitosMarcados[e.encuesta.id]?.toList() ?? const [],
+      nombreUsuario: e.miNombre.isNotEmpty ? e.miNombre : _miNombre,
+      dniUsuario: e.miDni,
     );
     if (!ok || !mounted) return;
     await _cargar();

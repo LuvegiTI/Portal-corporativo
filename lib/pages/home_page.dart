@@ -268,17 +268,18 @@ class _HomePageState extends State<HomePage> {
         return tieneCodigo('ADMIN_TICKETS');
       case 'Verificación RUC':
         return tieneCodigo('GESTION_RUC');
-      
+
       // ACTUALIZADO PARA ENCUESTAS
-      case 'Responder Encuesta':
+      case 'Mis Encuestas':
         return tieneCodigo('VOTAR_ELECCIONES');
-      case 'Postulaciones':
-        return tieneCodigo('VOTAR_ELECCIONES');
+      case 'Mis Postulaciones':
+        return true;
       case 'Administrar Encuestas':
         return tieneCodigo('GESTIONAR_ELECCIONES');
 
       case 'Comunicados':
-        return true;
+        return tieneCodigo('VER_COMUNICADOS') ||
+            tieneCodigo('GESTIONAR_COMUNICADOS');
       case 'Administrar Comunicados':
         return tieneCodigo('GESTIONAR_COMUNICADOS');
       default:
@@ -534,9 +535,9 @@ class _HomePageState extends State<HomePage> {
         return VerificacionRucPage(token: _token);
 
       // ACTUALIZADO PARA ENCUESTAS
-      case 'Responder Encuesta':
+      case 'Mis Encuestas':
         return ResponderEncuestaPage(token: _token);
-      case 'Postulaciones':
+      case 'Mis Postulaciones':
         return PostulacionesPage(token: _token);
       case 'Administrar Encuestas':
         return AdminEncuestasPage(token: _token);
@@ -865,8 +866,10 @@ class _HomePageState extends State<HomePage> {
     // PERMISOS DE ENCUESTAS ACTUALIZADOS
     final bool canResponderEncuestas = _tiene('VOTAR_ELECCIONES');
     final bool canAdminEncuestas = _tiene('GESTIONAR_ELECCIONES');
-    
+
     final bool canGestionarComunicados = _tiene('GESTIONAR_COMUNICADOS');
+    final bool canVerComunicados =
+        _tiene('VER_COMUNICADOS') || canGestionarComunicados;
 
     Widget drawerTile({
       required IconData icon,
@@ -990,7 +993,7 @@ class _HomePageState extends State<HomePage> {
 
     // GRUPO ACTIVO ACTUALIZADO PARA ENCUESTAS
     final bool encuestasActivo = [
-      'Responder Encuesta',
+      'Mis Encuestas',
       'Administrar Encuestas',
     ].contains(_activeTab);
 
@@ -1072,24 +1075,25 @@ class _HomePageState extends State<HomePage> {
                     tab: 'Inicio',
                   ),
 
-                  drawerGroup(
-                    title: 'Comunicados',
-                    icon: Icons.campaign_outlined,
-                    initiallyExpanded: comunicadosActivo,
-                    children: [
-                      drawerTile(
-                        icon: Icons.campaign_outlined,
-                        title: 'Comunicados',
-                        tab: 'Comunicados',
-                      ),
-                      if (canGestionarComunicados)
+                  if (canVerComunicados)
+                    drawerGroup(
+                      title: 'Comunicados',
+                      icon: Icons.campaign_outlined,
+                      initiallyExpanded: comunicadosActivo,
+                      children: [
                         drawerTile(
-                          icon: Icons.edit_note_rounded,
-                          title: 'Administrar Comunicados',
-                          tab: 'Administrar Comunicados',
+                          icon: Icons.campaign_outlined,
+                          title: 'Comunicados',
+                          tab: 'Comunicados',
                         ),
-                    ],
-                  ),
+                        if (canGestionarComunicados)
+                          drawerTile(
+                            icon: Icons.edit_note_rounded,
+                            title: 'Administrar Comunicados',
+                            tab: 'Administrar Comunicados',
+                          ),
+                      ],
+                    ),
 
                   if (canCortesPluz)
                     drawerTile(
@@ -1294,26 +1298,30 @@ class _HomePageState extends State<HomePage> {
                     ),
 
                   // ESTRUCTURA DE MENÚ ACTUALIZADA PARA ENCUESTAS
-                  if (canResponderEncuestas || canAdminEncuestas)
-                    drawerGroup(
-                      title: 'Encuestas',
-                      icon: Icons.assignment_outlined,
-                      initiallyExpanded: encuestasActivo,
-                      children: [
-                        if (canResponderEncuestas)
-                          drawerTile(
-                            icon: Icons.assignment_turned_in_outlined,
-                            title: 'Responder',
-                            tab: 'Responder Encuesta',
-                          ),
-                        if (canAdminEncuestas)
-                          drawerTile(
-                            icon: Icons.list_alt_outlined,
-                            title: 'Administrar Encuestas',
-                            tab: 'Administrar Encuestas',
-                          ),
-                      ],
-                    ),
+                  drawerGroup(
+                    title: 'Encuestas',
+                    icon: Icons.assignment_outlined,
+                    initiallyExpanded: encuestasActivo,
+                    children: [
+                      if (canResponderEncuestas)
+                        drawerTile(
+                          icon: Icons.assignment_turned_in_outlined,
+                          title: 'Responder',
+                          tab: 'Mis Encuestas',
+                        ),
+                      drawerTile(
+                        icon: Icons.how_to_reg_outlined,
+                        title: 'Postulaciones',
+                        tab: 'Mis Postulaciones',
+                      ),
+                      if (canAdminEncuestas)
+                        drawerTile(
+                          icon: Icons.list_alt_outlined,
+                          title: 'Administrar Encuestas',
+                          tab: 'Administrar Encuestas',
+                        ),
+                    ],
+                  ),
 
                   if (canAdminUser || canAdminRoles)
                     drawerGroup(

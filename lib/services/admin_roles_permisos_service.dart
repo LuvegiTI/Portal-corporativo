@@ -71,4 +71,23 @@ class AdminRolesPermisosService {
       return false;
     }
   }
+
+  /// Agrega o quita permisos a todos los usuarios activos.
+  /// [modo] es 'agregar' (conserva lo que ya tienen) o 'quitar'.
+  Future<bool> guardarMasivo(String token, List<int> pids, String modo) async {
+    try {
+      final res = await http.post(
+        Uri.parse("$baseUrl?action=guardar_masivo"),
+        headers: {
+          "Authorization": "Bearer $token",
+          "Content-Type": "application/json",
+        },
+        body: json.encode({"permisos": pids, "modo": modo}),
+      );
+      final data = json.decode(res.body);
+      return data['ok'] == true;
+    } catch (e) {
+      return false;
+    }
+  }
 }
