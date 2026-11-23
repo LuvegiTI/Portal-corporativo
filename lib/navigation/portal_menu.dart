@@ -138,6 +138,11 @@ List<PortalAccess> buildPortalAccesses({required PermisoFn tiene}) {
       ),
     );
   }
+  if (tiene('REPORTE_GRUPOS_ELECTROGENOS')) {
+    accesos.add(
+      const PortalAccess('Grupos Electrógenos', 'Reportes', Icons.bolt_rounded),
+    );
+  }
 
   if (tiene('MIS_OT')) {
     accesos.add(

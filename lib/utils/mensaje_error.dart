@@ -100,6 +100,7 @@ class MensajeError {
     'REQUISITOS_NECESARIOS':
         'Define los requisitos de postulación antes de iniciar la inscripción.',
     'FECHA_INVALIDA': 'La fecha ingresada no es válida.',
+    'FECHA_PASADA': 'Las fechas de apertura y cierre no pueden ser pasadas.',
     'ACCION_NO_VALIDA': 'La acción solicitada no es válida.',
     'METODO_NO_PERMITIDO': 'La operación no está permitida por este medio.',
     'USUARIO_INACTIVO':
