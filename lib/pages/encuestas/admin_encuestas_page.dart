@@ -10,6 +10,7 @@ import '../../theme/luvegi_colors.dart';
 import '../../theme/luvegi_radius.dart';
 import '../../theme/luvegi_spacing.dart';
 import '../../theme/luvegi_text.dart';
+import '../../utils/dialog_controllers.dart';
 import '../../utils/mensaje_error.dart';
 
 class AdminEncuestasPage extends StatefulWidget {
@@ -300,6 +301,7 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
     );
     if (resultado != true || !mounted) return;
 
+    final ahoraValidacion = DateTime.now();
     final tieneInscripcion = insInicio != null && insFin != null;
     final tieneVotacion = votInicio != null && votFin != null;
 
@@ -307,6 +309,14 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
       if (!tieneInscripcion) {
         _aviso(
           'Indica la apertura y el cierre de las postulaciones.',
+          error: true,
+        );
+        return;
+      }
+      if (insInicio!.isBefore(ahoraValidacion) ||
+          insFin!.isBefore(ahoraValidacion)) {
+        _aviso(
+          'La apertura y el cierre de las postulaciones no pueden ser pasados.',
           error: true,
         );
         return;
@@ -321,6 +331,14 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
     } else {
       if (!tieneVotacion) {
         _aviso('Indica la apertura y el cierre de la votación.', error: true);
+        return;
+      }
+      if (votInicio!.isBefore(ahoraValidacion) ||
+          votFin!.isBefore(ahoraValidacion)) {
+        _aviso(
+          'La apertura y el cierre de la votación no pueden ser pasados.',
+          error: true,
+        );
         return;
       }
       if (tieneInscripcion && !insFin!.isAfter(insInicio!)) {
@@ -461,13 +479,16 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
   /// Pide fecha y hora. Devuelve null si se cancela cualquiera de las dos.
   Future<DateTime?> _elegirFechaHora(DateTime inicial) async {
     final ahora = DateTime.now();
-    final minimo = DateTime(ahora.year - 1);
-    final maximo = DateTime(ahora.year + 3);
+    final minimo = DateTime(ahora.year, ahora.month, ahora.day);
+    final maximo = DateTime(ahora.year + 3, 12, 31);
+    final inicialAjustada = inicial.isBefore(minimo)
+        ? minimo
+        : (inicial.isAfter(maximo) ? maximo : inicial);
     final fecha = await showDatePicker(
       context: context,
-      initialDate: inicial,
-      firstDate: inicial.isBefore(minimo) ? inicial : minimo,
-      lastDate: inicial.isAfter(maximo) ? inicial : maximo,
+      initialDate: inicialAjustada,
+      firstDate: minimo,
+      lastDate: maximo,
       helpText: 'Selecciona la fecha',
     );
     if (fecha == null || !mounted) return null;
@@ -1478,7 +1499,8 @@ Future<_EncuestaForm?> _editarEncuestaDialog(
 
   final resultado = await showDialog<bool>(
     context: context,
-    builder: (ctx) => StatefulBuilder(
+    builder: (ctx) => DialogControllers(
+      controllers: [tituloCtrl, descCtrl, inicioCtrl, finCtrl],
       builder: (ctx, setDialogState) => AlertDialog(
         title: Text(
           encuesta == null
@@ -1606,10 +1628,6 @@ Future<_EncuestaForm?> _editarEncuestaDialog(
   final descripcion = descCtrl.text.trim();
   final fechaInicio = normalizar(inicioCtrl);
   final fechaFin = normalizar(finCtrl);
-  tituloCtrl.dispose();
-  descCtrl.dispose();
-  inicioCtrl.dispose();
-  finCtrl.dispose();
 
   if (resultado != true) return null;
   if (titulo.isEmpty) {
@@ -1854,7 +1872,8 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
 
     final resultado = await showDialog<EncuestaUsuario>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
+      builder: (dialogContext) => DialogControllers(
+        controllers: [filtroCtrl],
         builder: (dialogContext, setDialogState) {
           final q = filtroCtrl.text.trim().toLowerCase();
           final filtrados = q.isEmpty
@@ -1984,7 +2003,6 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
       ),
     );
 
-    filtroCtrl.dispose();
     return resultado;
   }
 
@@ -2005,64 +2023,67 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
 
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(pregunta == null ? 'Nuevo $etiqueta' : 'Editar $etiqueta'),
-        // El contenido se acota y hace scroll: el dialogo nunca crece
-        // mas alla de la pantalla, por mas texto que se escriba.
-        content: SizedBox(
-          // Ancho fijo: el AlertDialog calcula el ancho intrinseco del
-          // contenido y un viewport (scroll) no lo soporta.
-          width: (MediaQuery.sizeOf(ctx).width - 80).clamp(240.0, 400.0),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: nombreCtrl,
-                  autofocus: true,
-                  maxLines: 1,
-                  minLines: 1,
-                  inputFormatters: [LengthLimitingTextInputFormatter(150)],
-                  decoration: InputDecoration(
-                    labelText: _esPostulacion
-                        ? 'Nombre del cargo *'
-                        : 'Texto de la pregunta *',
-                    hintText: _esPostulacion
-                        ? 'Ej. Presidente'
-                        : 'Ej. ¿Cuál es la mejor propuesta?',
+      builder: (ctx) => DialogControllers(
+        controllers: [nombreCtrl, descCtrl],
+        builder: (ctx, _) => AlertDialog(
+          title: Text(
+            pregunta == null ? 'Nuevo $etiqueta' : 'Editar $etiqueta',
+          ),
+          // El contenido se acota y hace scroll: el dialogo nunca crece
+          // mas alla de la pantalla, por mas texto que se escriba.
+          content: SizedBox(
+            // Ancho fijo: el AlertDialog calcula el ancho intrinseco del
+            // contenido y un viewport (scroll) no lo soporta.
+            width: (MediaQuery.sizeOf(ctx).width - 80).clamp(240.0, 400.0),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: nombreCtrl,
+                    autofocus: true,
+                    maxLines: 1,
+                    minLines: 1,
+                    inputFormatters: [LengthLimitingTextInputFormatter(150)],
+                    decoration: InputDecoration(
+                      labelText: _esPostulacion
+                          ? 'Nombre del cargo *'
+                          : 'Texto de la pregunta *',
+                      hintText: _esPostulacion
+                          ? 'Ej. Presidente'
+                          : 'Ej. ¿Cuál es la mejor propuesta?',
+                    ),
                   ),
-                ),
-                const SizedBox(height: LuvegiSpacing.md),
-                TextField(
-                  controller: descCtrl,
-                  maxLines: 2,
-                  minLines: 1,
-                  inputFormatters: [LengthLimitingTextInputFormatter(255)],
-                  decoration: const InputDecoration(
-                    labelText: 'Descripción / Instrucciones',
+                  const SizedBox(height: LuvegiSpacing.md),
+                  TextField(
+                    controller: descCtrl,
+                    maxLines: 2,
+                    minLines: 1,
+                    inputFormatters: [LengthLimitingTextInputFormatter(255)],
+                    decoration: const InputDecoration(
+                      labelText: 'Descripción / Instrucciones',
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Guardar'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Guardar'),
-          ),
-        ],
       ),
     );
     final nombre = nombreCtrl.text.trim();
     final descripcion = descCtrl.text.trim();
-    nombreCtrl.dispose();
-    descCtrl.dispose();
     if (ok != true || !mounted) return;
     if (nombre.isEmpty) {
       _aviso('El nombre del $etiqueta es obligatorio.', error: true);
@@ -2151,7 +2172,8 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
 
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
+      builder: (ctx) => DialogControllers(
+        controllers: [nombreCtrl, areaCtrl, propCtrl, fotoCtrl],
         builder: (ctx, setDialogState) => AlertDialog(
           title: Text(opcion == null ? 'Nueva opción' : 'Editar opción'),
           // Altura acotada + scroll: el dialogo nunca crece mas alla de
@@ -2328,10 +2350,6 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
     final area = areaCtrl.text.trim();
     final propuesta = propCtrl.text.trim();
     final fotoUrl = fotoCtrl.text.trim();
-    nombreCtrl.dispose();
-    areaCtrl.dispose();
-    propCtrl.dispose();
-    fotoCtrl.dispose();
     if (ok != true || !mounted) return;
     if (nombre.isEmpty) {
       _aviso('El nombre de la opción es obligatorio.', error: true);

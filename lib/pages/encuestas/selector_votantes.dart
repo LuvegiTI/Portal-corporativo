@@ -4,6 +4,7 @@ import '../../services/encuesta_service.dart';
 import '../../theme/luvegi_colors.dart';
 import '../../theme/luvegi_radius.dart';
 import '../../theme/luvegi_text.dart';
+import '../../utils/dialog_controllers.dart';
 
 /// Abre el selector de personal que puede votar en una encuesta.
 /// Devuelve la lista de ids seleccionados, o null si se cancelo.
@@ -54,7 +55,8 @@ Future<List<int>?> mostrarSelectorVotantes({
 
   final resultado = await showDialog<List<int>>(
     context: context,
-    builder: (ctx) => StatefulBuilder(
+    builder: (ctx) => DialogControllers(
+      controllers: [filtroCtrl],
       builder: (ctx, setDialogState) {
         final q = filtroCtrl.text.trim().toLowerCase();
         final filtrados = q.isEmpty
@@ -336,7 +338,6 @@ Future<List<int>?> mostrarSelectorVotantes({
     ),
   );
 
-  filtroCtrl.dispose();
   if (resultado == null || resultado.isNotEmpty || !context.mounted) {
     return resultado;
   }

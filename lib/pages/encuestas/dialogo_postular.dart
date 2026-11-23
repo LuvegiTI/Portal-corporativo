@@ -4,6 +4,7 @@ import '../../services/encuesta_service.dart';
 import '../../theme/luvegi_colors.dart';
 import '../../theme/luvegi_radius.dart';
 import '../../theme/luvegi_text.dart';
+import '../../utils/dialog_controllers.dart';
 import '../../utils/mensaje_error.dart';
 
 /// Dialogo para postularse como candidato de una pregunta.
@@ -29,7 +30,8 @@ Future<bool> mostrarDialogoPostular({
         ({String propuesta, List<int> requisitos, List<int> opciones})
       >(
         context: context,
-        builder: (ctx) => StatefulBuilder(
+        builder: (ctx) => DialogControllers(
+          controllers: [ctrl],
           builder: (ctx, setDialogState) {
             final obligatorios = requisitos.where((r) => r.obligatorio);
             final todosMarcados =
@@ -204,7 +206,6 @@ Future<bool> mostrarDialogoPostular({
         ),
       );
 
-  ctrl.dispose();
   if (resultado == null || !context.mounted) return false;
 
   try {
