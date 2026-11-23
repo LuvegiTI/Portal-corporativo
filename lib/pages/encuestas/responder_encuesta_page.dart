@@ -74,7 +74,7 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
         // Solo encuestas de votacion directa. Las postulaciones se
         // gestionan desde el menú Postulaciones.
         _encuestas = lista
-            .where((e) => e.puedeVotar && !e.esPostulacion)
+            .where((e) => (e.puedeVotar || e.yaRespondio) && !e.esPostulacion)
             .toList();
         if (silencioso) {
           // En el refresco se conservan las respuestas ya marcadas.

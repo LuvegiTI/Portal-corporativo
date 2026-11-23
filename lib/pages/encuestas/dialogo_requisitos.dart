@@ -374,9 +374,9 @@ class _FormularioAgregarState extends State<_FormularioAgregar> {
 String _pistaValor(String tipo) {
   switch (tipo) {
     case 'EDAD_MIN':
-      return 'Anos minimos (ej. 18)';
+      return 'Años minimos (ej. 18)';
     case 'ANTIGUEDAD_MIN':
-      return 'Anos minimos en la empresa (ej. 2)';
+      return 'Años minimos en la empresa (ej. 2)';
     case 'TIPO_CONTRATO':
       return 'Tipo de contrato (employee, trainee, contractor...)';
     case 'AREA':
@@ -412,11 +412,5 @@ String _etiquetaTipo(String tipo) {
 }
 
 const Map<String, String> _tiposDisponibles = {
-  'EDAD_MIN': 'Edad minima',
-  'ANTIGUEDAD_MIN': 'Antiguedad minima en la empresa',
-  'TIPO_CONTRATO': 'Tipo de contrato',
-  'NO_CESADO': 'No estar cesado',
-  'AREA': 'Area',
-  'PUESTO': 'Puesto',
   'MANUAL': 'Requisito manual',
 };
