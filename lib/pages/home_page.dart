@@ -31,6 +31,7 @@ import 'reporte_detalle_anual_page.dart';
 import 'reporte_lineas_venta_page.dart';
 import 'reporte_compra_page.dart';
 import 'reporte_cxc_page.dart';
+import 'reporte_grupos_electrogenos_page.dart';
 import 'pluz_cortes_page.dart';
 import '../pages/api_client.dart';
 import 'rdr/registrar_rdr_page.dart';
@@ -254,6 +255,8 @@ class _HomePageState extends State<HomePage> {
         return tieneCodigo('VER_ESTADISTICAS_TARJETA');
       case 'Cuentas por Cobrar Vencidas':
         return tieneCodigo('REPORTE_CXC');
+      case 'Grupos Electrógenos':
+        return tieneCodigo('REPORTE_GRUPOS_ELECTROGENOS');
       case 'Mis Órdenes de Trabajo':
         return tieneCodigo('MIS_OT');
       case 'Registrar REDIR':
@@ -487,6 +490,12 @@ class _HomePageState extends State<HomePage> {
         return EstadisticasTarjetaPage(token: _token);
       case 'Cuentas por Cobrar Vencidas':
         return ReporteCxcPage(
+          token: _token,
+          permisos: _permisosDinamicos,
+          rol: _rolDinamico,
+        );
+      case 'Grupos Electrógenos':
+        return ReporteGruposElectrogenosPage(
           token: _token,
           permisos: _permisosDinamicos,
           rol: _rolDinamico,
@@ -844,6 +853,9 @@ class _HomePageState extends State<HomePage> {
     final bool canReporteOrdenCompra = _tiene('CONSULTAR_COMPRAS');
     final bool canEstadisticasTarjeta = _tiene('VER_ESTADISTICAS_TARJETA');
     final bool canReporteCxc = _tiene('REPORTE_CXC');
+    final bool canReporteGruposElectrogenos = _tiene(
+      'REPORTE_GRUPOS_ELECTROGENOS',
+    );
 
     final bool canAdminUser = _tiene('USUARIOS', id: '9');
     final bool canAdminRoles = _tiene('ROLES', id: '10');
@@ -970,6 +982,7 @@ class _HomePageState extends State<HomePage> {
       'Reporte de Órdenes de Compra',
       'Estadísticas Tarjetas',
       'Cuentas por Cobrar Vencidas',
+      'Grupos Electrógenos',
     ].contains(_activeTab);
 
     final bool herramientasActivo = [
@@ -1151,7 +1164,8 @@ class _HomePageState extends State<HomePage> {
                       canReporteLineasVenta ||
                       canReporteOrdenCompra ||
                       canEstadisticasTarjeta ||
-                      canReporteCxc)
+                      canReporteCxc ||
+                      canReporteGruposElectrogenos)
                     drawerGroup(
                       title: 'Reportes',
                       icon: Icons.bar_chart_rounded,
@@ -1204,6 +1218,12 @@ class _HomePageState extends State<HomePage> {
                             icon: Icons.payments_outlined,
                             title: 'Cuentas por Cobrar Vencidas',
                             tab: 'Cuentas por Cobrar Vencidas',
+                          ),
+                        if (canReporteGruposElectrogenos)
+                          drawerTile(
+                            icon: Icons.bolt_rounded,
+                            title: 'Grupos Electrógenos',
+                            tab: 'Grupos Electrógenos',
                           ),
                       ],
                     ),
