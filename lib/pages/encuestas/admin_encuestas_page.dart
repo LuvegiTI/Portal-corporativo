@@ -2494,14 +2494,6 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
                                     : LuvegiColors.error,
                               ),
                             ),
-                          OutlinedButton.icon(
-                            onPressed: () => _abrirRequisitos(),
-                            icon: const Icon(Icons.rule, size: 18),
-                            label: const Text('Requisitos'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: LuvegiColors.secondary,
-                            ),
-                          ),
                           if (!_esPostulacion)
                             ElevatedButton.icon(
                               onPressed: () => _guardarPregunta(),
@@ -2514,15 +2506,6 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
                             ),
                         ],
                       ),
-                      if (!_esPostulacion) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          'Registrar requisitos convierte esta encuesta en una '
-                          'postulación: el personal se inscribe y no hay '
-                          'votación.',
-                          style: LuvegiText.caption,
-                        ),
-                      ],
                     ],
                   ),
                   const SizedBox(height: LuvegiSpacing.lg),
@@ -2540,30 +2523,6 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
               ),
       ),
     );
-  }
-
-  /// Abre el editor de requisitos y deja la vista al dia: al registrar
-  /// requisitos el proceso pasa a ser una postulacion.
-  Future<void> _abrirRequisitos() async {
-    await mostrarDialogoRequisitos(
-      context: context,
-      service: widget.service,
-      token: widget.token,
-      encuestaId: widget.encuesta.id,
-    );
-    if (!mounted) return;
-    try {
-      final requisitos = await widget.service.listarRequisitos(
-        token: widget.token,
-        encuestaId: widget.encuesta.id,
-      );
-      if (!mounted) return;
-      setState(() => _requisitos = requisitos.length);
-    } catch (_) {
-      // Si no se pueden leer, se deja el valor anterior.
-    }
-    if (!mounted) return;
-    await _cargar();
   }
 
   Widget _buildPostulaciones() {
