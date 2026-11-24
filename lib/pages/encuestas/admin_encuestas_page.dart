@@ -885,16 +885,17 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 _botonPrincipal(encuesta),
-                OutlinedButton.icon(
-                  onPressed: () => esPostulacion
-                      ? _abrirRequisitos(encuesta)
-                      : _abrirDetalle(encuesta),
-                  icon: Icon(
-                    esPostulacion ? Icons.rule : Icons.list_alt,
-                    size: 18,
+                if (!esPostulacion || (encuesta.requisitos ?? 0) > 0)
+                  OutlinedButton.icon(
+                    onPressed: () => esPostulacion
+                        ? _abrirRequisitos(encuesta)
+                        : _abrirDetalle(encuesta),
+                    icon: Icon(
+                      esPostulacion ? Icons.rule : Icons.list_alt,
+                      size: 18,
+                    ),
+                    label: const Text('Configurar'),
                   ),
-                  label: const Text('Configurar'),
-                ),
                 if (esPostulacion && !cerrada)
                   OutlinedButton.icon(
                     onPressed: () => _verInscritos(encuesta),
@@ -1271,14 +1272,15 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
                   ),
                   const SizedBox(width: 8),
                   Expanded(child: Text(p.$2, style: LuvegiText.caption)),
-                  TextButton(
-                    onPressed: p.$3,
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      foregroundColor: LuvegiColors.secondary,
+                  if (!esPostulacion || (encuesta.requisitos ?? 0) > 0)
+                    TextButton(
+                      onPressed: p.$3,
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        foregroundColor: LuvegiColors.secondary,
+                      ),
+                      child: const Text('Configurar'),
                     ),
-                    child: const Text('Configurar'),
-                  ),
                 ],
               ),
             ),
