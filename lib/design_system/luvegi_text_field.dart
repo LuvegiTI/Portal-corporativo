@@ -11,6 +11,7 @@ class LuvegiTextField extends StatelessWidget {
   final IconData? prefixIcon;
   final TextInputAction? textInputAction;
   final ValueChanged<String>? onSubmitted;
+  final ValueChanged<String>? onChanged;
   final bool enabled;
   final bool obscureText;
   final double? width;
@@ -23,6 +24,7 @@ class LuvegiTextField extends StatelessWidget {
     this.prefixIcon,
     this.textInputAction,
     this.onSubmitted,
+    this.onChanged,
     this.enabled = true,
     this.obscureText = false,
     this.width,
@@ -38,6 +40,7 @@ class LuvegiTextField extends StatelessWidget {
         obscureText: obscureText,
         textInputAction: textInputAction,
         onSubmitted: onSubmitted,
+        onChanged: onChanged,
         cursorColor: LuvegiColors.secondary,
         style: LuvegiText.body.copyWith(fontWeight: FontWeight.w600),
         decoration: InputDecoration(

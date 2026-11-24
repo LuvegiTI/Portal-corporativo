@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show ValueNotifier, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:data_table_2/data_table_2.dart';
 import 'package:excel/excel.dart' as excel_lib;
@@ -40,8 +40,12 @@ class _ReporteGruposElectrogenosPageState
     with LuvegiProgresoMixin {
   final _service = ReporteGruposElectrogenosService();
   final _categoriaCtrl = TextEditingController(text: '01-GRUPOS ELECTROGEN');
+  final _productoCtrl = TextEditingController();
+  final ValueNotifier<String> _filtroProducto = ValueNotifier<String>('');
+  static const int _tamanoPagina = 50;
 
   bool cargando = false;
+  int _pagina = 0;
   bool exportando = false;
   String? error;
   List<ReporteGrupoElectrogeno> filas = [];
@@ -62,10 +66,32 @@ class _ReporteGruposElectrogenosPageState
       _esAdmin ||
       widget.permisos.any((p) => p.trim().toUpperCase() == 'EXPORTAR_EXCEL');
 
+  List<ReporteGrupoElectrogeno> get _filasFiltradas {
+    final filtro = _filtroProducto.value;
+    if (filtro.isEmpty) return filas;
+    return filas
+        .where((r) => r.producto.toLowerCase().contains(filtro))
+        .toList();
+  }
+
+  int get _totalPaginas {
+    final total = _filasFiltradas.length;
+    return total == 0 ? 1 : (total / _tamanoPagina).ceil();
+  }
+
+  List<ReporteGrupoElectrogeno> get _filasVisibles {
+    final inicio = _pagina * _tamanoPagina;
+    if (inicio >= _filasFiltradas.length) return [];
+    final fin = (inicio + _tamanoPagina).clamp(0, _filasFiltradas.length);
+    return _filasFiltradas.sublist(inicio, fin);
+  }
+
   @override
   void dispose() {
     cancelarProgresoTimer();
     _categoriaCtrl.dispose();
+    _productoCtrl.dispose();
+    _filtroProducto.dispose();
     super.dispose();
   }
 
@@ -96,6 +122,7 @@ class _ReporteGruposElectrogenosPageState
       setState(() {
         filas = res.data;
         categoriaConsultada = res.categoria;
+        _pagina = 0;
       });
     } catch (e) {
       if (!mounted) return;
@@ -123,6 +150,10 @@ class _ReporteGruposElectrogenosPageState
       setState(() => error = 'Consulta el reporte antes de exportar.');
       return;
     }
+    if (_filasFiltradas.isEmpty) {
+      setState(() => error = 'No hay productos que coincidan con el filtro.');
+      return;
+    }
 
     setState(() => exportando = true);
     try {
@@ -141,7 +172,7 @@ class _ReporteGruposElectrogenosPageState
         excel_lib.TextCellValue('Precio Fijo'),
       ]);
 
-      for (final r in filas) {
+      for (final r in _filasFiltradas) {
         sheet.appendRow([
           excel_lib.TextCellValue(r.categoria),
           excel_lib.TextCellValue(r.producto),
@@ -209,7 +240,10 @@ class _ReporteGruposElectrogenosPageState
         ],
         if (filas.isNotEmpty) ...[
           const SizedBox(height: LuvegiSpacing.md),
-          _resumen(),
+          ValueListenableBuilder<String>(
+            valueListenable: _filtroProducto,
+            builder: (_, _, _) => _resumen(),
+          ),
         ],
         const SizedBox(height: LuvegiSpacing.md),
       ],
@@ -227,8 +261,15 @@ class _ReporteGruposElectrogenosPageState
                   children: [
                     contenido,
                     SizedBox(
-                      height: filas.isEmpty ? 300 : 540,
-                      child: _resultados(compacto),
+                      height: filas.isEmpty ? 300 : 500,
+                      child: ValueListenableBuilder<String>(
+                        valueListenable: _filtroProducto,
+                        builder: (_, _, _) => _resultados(compacto),
+                      ),
+                    ),
+                    ValueListenableBuilder<String>(
+                      valueListenable: _filtroProducto,
+                      builder: (_, _, _) => _paginador(),
                     ),
                   ],
                 ),
@@ -239,7 +280,16 @@ class _ReporteGruposElectrogenosPageState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     contenido,
-                    Expanded(child: _resultados(compacto)),
+                    Expanded(
+                      child: ValueListenableBuilder<String>(
+                        valueListenable: _filtroProducto,
+                        builder: (_, _, _) => _resultados(compacto),
+                      ),
+                    ),
+                    ValueListenableBuilder<String>(
+                      valueListenable: _filtroProducto,
+                      builder: (_, _, _) => _paginador(),
+                    ),
                   ],
                 ),
               ),
@@ -299,6 +349,18 @@ class _ReporteGruposElectrogenosPageState
           width: compacto ? double.infinity : 320,
           onSubmitted: (_) => buscar(),
         ),
+        LuvegiTextField(
+          controller: _productoCtrl,
+          label: 'Producto',
+          hint: 'Filtrar por nombre',
+          prefixIcon: Icons.inventory_2_outlined,
+          textInputAction: TextInputAction.search,
+          width: compacto ? double.infinity : 280,
+          onChanged: (v) {
+            _filtroProducto.value = v.trim().toLowerCase();
+            _pagina = 0;
+          },
+        ),
         LuvegiButton.primary(
           text: cargando ? 'Buscando...' : 'Buscar',
           icon: Icons.search_rounded,
@@ -353,8 +415,10 @@ class _ReporteGruposElectrogenosPageState
       spacing: LuvegiSpacing.sm,
       runSpacing: LuvegiSpacing.sm,
       children: [
-        _chip('Registros', '${filas.length}'),
+        _chip('Registros', '${_filasFiltradas.length}'),
         _chip('Categoría', categoriaConsultada),
+        if (_productoCtrl.text.trim().isNotEmpty)
+          _chip('Producto', _productoCtrl.text.trim()),
       ],
     );
   }
@@ -403,12 +467,69 @@ class _ReporteGruposElectrogenosPageState
         ),
       );
     }
+    if (_filasFiltradas.isEmpty) {
+      return Center(
+        child: LuvegiCard(
+          maxWidth: 430,
+          padding: const EdgeInsets.all(LuvegiSpacing.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.filter_alt_off_outlined,
+                size: 42,
+                color: LuvegiColors.textHint,
+              ),
+              const SizedBox(height: LuvegiSpacing.md),
+              Text(
+                'No hay productos que coincidan con el filtro.',
+                textAlign: TextAlign.center,
+                style: LuvegiText.bodySecondary,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     if (compacto) return _tarjetas();
     return LuvegiCard(
       padding: EdgeInsets.zero,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(LuvegiRadius.lg),
         child: _tabla(),
+      ),
+    );
+  }
+
+  Widget _paginador() {
+    final total = _filasFiltradas.length;
+    if (total <= _tamanoPagina) return const SizedBox.shrink();
+
+    final paginas = _totalPaginas;
+    final desde = _pagina * _tamanoPagina + 1;
+    final hasta = ((_pagina + 1) * _tamanoPagina).clamp(0, total);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: LuvegiSpacing.sm),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Text('$desde-$hasta de $total', style: LuvegiText.caption),
+          const SizedBox(width: LuvegiSpacing.md),
+          IconButton(
+            tooltip: 'Anterior',
+            icon: const Icon(Icons.chevron_left_rounded),
+            onPressed: _pagina == 0 ? null : () => setState(() => _pagina--),
+          ),
+          Text('Página ${_pagina + 1} de $paginas', style: LuvegiText.caption),
+          IconButton(
+            tooltip: 'Siguiente',
+            icon: const Icon(Icons.chevron_right_rounded),
+            onPressed: _pagina >= paginas - 1
+                ? null
+                : () => setState(() => _pagina++),
+          ),
+        ],
       ),
     );
   }
@@ -438,16 +559,16 @@ class _ReporteGruposElectrogenosPageState
         }),
         border: TableBorder.all(color: LuvegiColors.border),
         columns: [
-          _columna('Categoría', 220),
-          _columna('Producto', 360),
-          _columna('A la mano', 110),
-          _columna('Entrante', 110),
-          _columna('Saliente', 110),
-          _columna('Disponible', 130),
-          _columna('Lista de Precios', 220),
-          _columna('Precio Fijo', 130),
+          _columna('Categoría', width: 200),
+          _columna('Producto', size: ColumnSize.L),
+          _columna('A la mano', width: 100),
+          _columna('Entrante', width: 100),
+          _columna('Saliente', width: 100),
+          _columna('Disponible', width: 120),
+          _columna('Lista de Precios', size: ColumnSize.L),
+          _columna('Precio Fijo', width: 120),
         ],
-        rows: filas.map((r) {
+        rows: _filasVisibles.map((r) {
           return DataRow(
             cells: [
               DataCell(_celda(r.categoria)),
@@ -467,9 +588,9 @@ class _ReporteGruposElectrogenosPageState
 
   Widget _tarjetas() => ListView.separated(
     padding: EdgeInsets.zero,
-    itemCount: filas.length,
+    itemCount: _filasVisibles.length,
     separatorBuilder: (_, _) => const SizedBox(height: 10),
-    itemBuilder: (_, i) => _tarjeta(filas[i]),
+    itemBuilder: (_, i) => _tarjeta(_filasVisibles[i]),
   );
 
   Widget _tarjeta(ReporteGrupoElectrogeno r) {
@@ -484,14 +605,13 @@ class _ReporteGruposElectrogenosPageState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          _seleccionable(
             r.producto.isEmpty ? '—' : r.producto,
             style: LuvegiText.body.copyWith(fontWeight: FontWeight.w700),
             maxLines: 3,
-            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 4),
-          Text(r.categoria, style: LuvegiText.caption),
+          _seleccionable(r.categoria, style: LuvegiText.caption),
           const SizedBox(height: 10),
           const Divider(height: 1),
           const SizedBox(height: 8),
@@ -513,23 +633,26 @@ class _ReporteGruposElectrogenosPageState
       children: [
         SizedBox(
           width: 120,
-          child: Text(
+          child: _seleccionable(
             label,
             style: LuvegiText.caption.copyWith(fontWeight: FontWeight.w700),
           ),
         ),
-        Expanded(child: Text(value, style: LuvegiText.body)),
+        Expanded(child: _seleccionable(value, style: LuvegiText.body)),
       ],
     ),
   );
 
-  DataColumn2 _columna(String texto, double width) {
+  DataColumn2 _columna(
+    String texto, {
+    double? width,
+    ColumnSize size = ColumnSize.M,
+  }) {
     return DataColumn2(
       fixedWidth: width,
-      label: Text(
+      size: size,
+      label: _seleccionable(
         texto,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
         style: LuvegiText.caption.copyWith(
           color: LuvegiColors.textPrimary,
           fontWeight: FontWeight.w800,
@@ -538,19 +661,27 @@ class _ReporteGruposElectrogenosPageState
     );
   }
 
+  Widget _seleccionable(
+    String texto, {
+    TextStyle? style,
+    int maxLines = 2,
+    TextAlign align = TextAlign.left,
+  }) {
+    return SelectableText(
+      texto,
+      maxLines: maxLines,
+      textAlign: align,
+      style: style,
+    );
+  }
+
   Widget _celda(String texto, {TextAlign align = TextAlign.left}) {
-    return Tooltip(
-      message: texto,
-      waitDuration: const Duration(milliseconds: 600),
-      child: Text(
-        texto,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        textAlign: align,
-        style: LuvegiText.caption.copyWith(
-          color: LuvegiColors.textPrimary,
-          fontWeight: FontWeight.w500,
-        ),
+    return _seleccionable(
+      texto,
+      align: align,
+      style: LuvegiText.caption.copyWith(
+        color: LuvegiColors.textPrimary,
+        fontWeight: FontWeight.w500,
       ),
     );
   }
