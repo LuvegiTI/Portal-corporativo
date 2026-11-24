@@ -10,6 +10,7 @@ import '../../theme/luvegi_spacing.dart';
 import '../../theme/luvegi_text.dart';
 import '../../utils/mensaje_error.dart';
 import 'dialogo_postular.dart';
+import 'historial_encuestas_section.dart';
 
 /// Pagina del menu "Postulaciones": muestra las encuestas abiertas a las que
 /// el personal puede postularse como candidato, y si cumple sus requisitos.
@@ -34,6 +35,8 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
 
   /// Nombre del usuario en sesion, para mostrarlo al postularse.
   String _miNombre = '';
+
+  int _historialKey = 0;
 
   Timer? _temporizador;
 
@@ -98,6 +101,11 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
     }
   }
 
+  void _refrescarHistorial() {
+    if (!mounted) return;
+    setState(() => _historialKey++);
+  }
+
   @override
   Widget build(BuildContext context) {
     final mobile = MediaQuery.of(context).size.width < 760;
@@ -124,54 +132,6 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
       );
     }
 
-    if (_error != null) {
-      return _card(
-        child: Column(
-          children: [
-            const Icon(
-              Icons.error_outline,
-              color: LuvegiColors.error,
-              size: 42,
-            ),
-            const SizedBox(height: LuvegiSpacing.md),
-            Text(_error!, textAlign: TextAlign.center, style: LuvegiText.body),
-            const SizedBox(height: LuvegiSpacing.md),
-            OutlinedButton.icon(
-              onPressed: _cargar,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reintentar'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (_encuestas.isEmpty) {
-      return _card(
-        child: Column(
-          children: [
-            const Icon(
-              Icons.how_to_reg_outlined,
-              size: 48,
-              color: LuvegiColors.textHint,
-            ),
-            const SizedBox(height: LuvegiSpacing.md),
-            Text('No hay encuestas abiertas', style: LuvegiText.title),
-            const SizedBox(height: LuvegiSpacing.xs),
-            Text(
-              'Para postularte debe haber una postulación con requisitos '
-              'registrados y la inscripción abierta. Si crees que es un '
-              'error, comunícate con RRHH.',
-              textAlign: TextAlign.center,
-              style: LuvegiText.bodySecondary,
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Las encuestas en las que ya te postulaste salen de la lista principal:
-    // se resumen al final para que puedas ver el estado o retirarla.
     final pendientes = _encuestas
         .where((e) => e.misPostulaciones.isEmpty)
         .toList();
@@ -182,34 +142,88 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Postulaciones',
-                style: LuvegiText.title.copyWith(fontSize: 20),
+        if (_error != null) ...[
+          _card(
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  color: LuvegiColors.error,
+                  size: 42,
+                ),
+                const SizedBox(height: LuvegiSpacing.md),
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: LuvegiText.body,
+                ),
+                const SizedBox(height: LuvegiSpacing.md),
+                OutlinedButton.icon(
+                  onPressed: _cargar,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reintentar'),
+                ),
+              ],
+            ),
+          ),
+        ] else if (_encuestas.isEmpty) ...[
+          _card(
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.how_to_reg_outlined,
+                  size: 48,
+                  color: LuvegiColors.textHint,
+                ),
+                const SizedBox(height: LuvegiSpacing.md),
+                Text('No hay encuestas abiertas', style: LuvegiText.title),
+                const SizedBox(height: LuvegiSpacing.xs),
+                Text(
+                  'Para postularte debe haber una postulación con requisitos '
+                  'registrados y la inscripción abierta. Si crees que es un '
+                  'error, comunícate con RRHH.',
+                  textAlign: TextAlign.center,
+                  style: LuvegiText.bodySecondary,
+                ),
+              ],
+            ),
+          ),
+        ] else ...[
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Postulaciones',
+                  style: LuvegiText.title.copyWith(fontSize: 20),
+                ),
               ),
-            ),
-            IconButton(
-              tooltip: 'Actualizar',
-              onPressed: () => _cargar(),
-              icon: const Icon(Icons.refresh),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          pendientes.isEmpty
-              ? 'Ya te postulaste en todas las encuestas disponibles.'
-              : 'Elige en que encuesta te quieres postular como candidato.',
-          style: LuvegiText.bodySecondary,
-        ),
-        const SizedBox(height: LuvegiSpacing.lg),
-        ...pendientes.map(_buildEncuesta),
-        if (realizadas.isNotEmpty) ...[
+              IconButton(
+                tooltip: 'Actualizar',
+                onPressed: () => _cargar(),
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            pendientes.isEmpty
+                ? 'Ya te postulaste en todas las encuestas disponibles.'
+                : 'Elige en que encuesta te quieres postular como candidato.',
+            style: LuvegiText.bodySecondary,
+          ),
           const SizedBox(height: LuvegiSpacing.lg),
-          _buildSeccionPostuladas(realizadas),
+          ...pendientes.map(_buildEncuesta),
+          if (realizadas.isNotEmpty) ...[
+            const SizedBox(height: LuvegiSpacing.lg),
+            _buildSeccionPostuladas(realizadas),
+          ],
         ],
+        HistorialEncuestasSection(
+          token: widget.token,
+          titulo: 'Historial de postulaciones',
+          tipos: const {'POSTULACION'},
+          refreshKey: _historialKey,
+        ),
       ],
     );
   }
@@ -504,6 +518,7 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
     );
     if (!ok || !mounted) return;
     await _cargar();
+    _refrescarHistorial();
   }
 
   Future<void> _retirar(EncuestaVotable e, int opcionId) async {
@@ -515,6 +530,7 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
       if (!mounted) return;
       await _cargar();
       if (!mounted) return;
+      _refrescarHistorial();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Tu postulación se retiró.')),
       );
