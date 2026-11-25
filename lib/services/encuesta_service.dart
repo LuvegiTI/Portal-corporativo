@@ -512,6 +512,69 @@ class EncuestaVotable {
   }
 }
 
+class EncuestaHistorialItem {
+  final int encuestaId;
+  final String titulo;
+  final String descripcion;
+  final String tipoEncuesta;
+  final String estadoEncuesta;
+  final String? fechaInicio;
+  final String? fechaFin;
+  final String fechaParticipacion;
+  final String tipoParticipacion;
+  final String? recibo;
+  final String? estadoPostulacion;
+  final bool retirada;
+
+  const EncuestaHistorialItem({
+    required this.encuestaId,
+    required this.titulo,
+    required this.descripcion,
+    required this.tipoEncuesta,
+    required this.estadoEncuesta,
+    required this.fechaParticipacion,
+    required this.tipoParticipacion,
+    this.fechaInicio,
+    this.fechaFin,
+    this.recibo,
+    this.estadoPostulacion,
+    this.retirada = false,
+  });
+
+  bool get esVoto => tipoParticipacion.toUpperCase() == 'VOTO';
+  bool get esPostulacion => tipoParticipacion.toUpperCase() == 'POSTULACION';
+
+  String get etiquetaParticipacion => esVoto ? 'Voto' : 'Postulación';
+
+  String get estadoMostrado {
+    if (retirada) return 'RETIRADA';
+    if (esPostulacion &&
+        estadoPostulacion != null &&
+        estadoPostulacion!.isNotEmpty) {
+      return estadoPostulacion!;
+    }
+    return estadoEncuesta;
+  }
+
+  factory EncuestaHistorialItem.fromJson(Map<String, dynamic> json) {
+    final rawRetirada = json['retirada'];
+    return EncuestaHistorialItem(
+      encuestaId: _entero(json['encuesta_id']),
+      titulo: (json['titulo'] ?? '').toString(),
+      descripcion: (json['descripcion'] ?? '').toString(),
+      tipoEncuesta: (json['tipo_encuesta'] ?? 'ENCUESTA').toString(),
+      estadoEncuesta: (json['estado_encuesta'] ?? '').toString(),
+      fechaInicio: json['fecha_inicio']?.toString(),
+      fechaFin: json['fecha_fin']?.toString(),
+      fechaParticipacion: (json['fecha_participacion'] ?? '').toString(),
+      tipoParticipacion: (json['tipo_participacion'] ?? '').toString(),
+      recibo: json['recibo']?.toString(),
+      estadoPostulacion: json['estado_postulacion']?.toString(),
+      retirada: rawRetirada == true || rawRetirada == 1 || rawRetirada == '1',
+    );
+  }
+}
+
 Map<int, int> _mapaPostulaciones(dynamic raw) {
   final salida = <int, int>{};
   // Si la postulacion aun no tiene puesto asignado el backend puede
@@ -1001,6 +1064,26 @@ class EncuestaService {
     return raw
         .whereType<Map>()
         .map((e) => EncuestaVotable.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  Future<List<EncuestaHistorialItem>> obtenerHistorialEncuestas({
+    required String token,
+  }) async {
+    final res = await http
+        .get(Uri.parse('$_userUrl?action=historial'), headers: _headers(token))
+        .timeout(_timeout);
+
+    if (res.statusCode != 200) throw _handleError(res);
+    final data = _decodificar(res);
+    _verificarOk(data, res);
+
+    final raw = data['historial'] as List<dynamic>? ?? const [];
+    return raw
+        .whereType<Map>()
+        .map(
+          (e) => EncuestaHistorialItem.fromJson(Map<String, dynamic>.from(e)),
+        )
         .toList();
   }
 

@@ -29,8 +29,6 @@ Future<void> mostrarDialogoRequisitos({
   }
   if (!context.mounted) return;
 
-  final tipos = _tiposDisponibles;
-
   await showDialog<void>(
     context: context,
     builder: (ctx) => StatefulBuilder(
@@ -194,7 +192,6 @@ Future<void> mostrarDialogoRequisitos({
                     ),
                   const SizedBox(height: 8),
                   _FormularioAgregar(
-                    tipos: tipos,
                     onAgregar: (tipo, valor, descripcion, obligatorio) async {
                       try {
                         await service.guardarRequisito(
@@ -239,7 +236,6 @@ Future<void> mostrarDialogoRequisitos({
 
 /// Formulario para agregar un requisito nuevo.
 class _FormularioAgregar extends StatefulWidget {
-  final Map<String, String> tipos;
   final Future<void> Function(
     String tipo,
     String valor,
@@ -248,22 +244,20 @@ class _FormularioAgregar extends StatefulWidget {
   )
   onAgregar;
 
-  const _FormularioAgregar({required this.tipos, required this.onAgregar});
+  const _FormularioAgregar({required this.onAgregar});
 
   @override
   State<_FormularioAgregar> createState() => _FormularioAgregarState();
 }
 
 class _FormularioAgregarState extends State<_FormularioAgregar> {
-  final TextEditingController valorCtrl = TextEditingController();
   final TextEditingController descCtrl = TextEditingController();
-  late String tipo = widget.tipos.keys.first;
+  static const String _tipoManual = 'MANUAL';
   bool guardando = false;
   bool obligatorio = true;
 
   @override
   void dispose() {
-    valorCtrl.dispose();
     descCtrl.dispose();
     super.dispose();
   }
@@ -285,40 +279,10 @@ class _FormularioAgregarState extends State<_FormularioAgregar> {
           ),
         ),
         const SizedBox(height: 10),
-        DropdownButtonFormField<String>(
-          initialValue: tipo,
-          isDense: true,
-          decoration: const InputDecoration(
-            labelText: 'Tipo de requisito',
-            isDense: true,
-          ),
-          items: widget.tipos.entries
-              .map(
-                (e) => DropdownMenuItem(
-                  value: e.key,
-                  child: Text(e.value, style: const TextStyle(fontSize: 13)),
-                ),
-              )
-              .toList(),
-          onChanged: (v) => setState(() => tipo = v ?? tipo),
-        ),
-        const SizedBox(height: 10),
-        if (tipo != 'NO_CESADO' && tipo != 'MANUAL') ...[
-          TextField(
-            controller: valorCtrl,
-            decoration: InputDecoration(
-              labelText: _pistaValor(tipo),
-              isDense: true,
-            ),
-          ),
-          const SizedBox(height: 10),
-        ],
         TextField(
           controller: descCtrl,
-          decoration: InputDecoration(
-            labelText: tipo == 'MANUAL'
-                ? 'Descripcion del requisito'
-                : 'Descripcion (opcional)',
+          decoration: const InputDecoration(
+            labelText: 'Descripcion del requisito',
             isDense: true,
           ),
         ),
@@ -346,13 +310,12 @@ class _FormularioAgregarState extends State<_FormularioAgregar> {
                 : () async {
                     setState(() => guardando = true);
                     await widget.onAgregar(
-                      tipo,
-                      valorCtrl.text.trim(),
+                      _tipoManual,
+                      '',
                       descCtrl.text.trim(),
                       obligatorio,
                     );
                     if (!mounted) return;
-                    valorCtrl.clear();
                     descCtrl.clear();
                     setState(() {
                       guardando = false;
@@ -368,25 +331,6 @@ class _FormularioAgregarState extends State<_FormularioAgregar> {
         ),
       ],
     );
-  }
-}
-
-String _pistaValor(String tipo) {
-  switch (tipo) {
-    case 'EDAD_MIN':
-      return 'Años minimos (ej. 18)';
-    case 'ANTIGUEDAD_MIN':
-      return 'Años minimos en la empresa (ej. 2)';
-    case 'TIPO_CONTRATO':
-      return 'Tipo de contrato (employee, trainee, contractor...)';
-    case 'AREA':
-      return 'Area requerida (ej. MANTENIMIENTO)';
-    case 'PUESTO':
-      return 'Puesto requerido';
-    case 'MANUAL':
-      return 'Texto del requisito';
-    default:
-      return 'Valor';
   }
 }
 
@@ -410,7 +354,3 @@ String _etiquetaTipo(String tipo) {
       return tipo;
   }
 }
-
-const Map<String, String> _tiposDisponibles = {
-  'MANUAL': 'Requisito manual',
-};

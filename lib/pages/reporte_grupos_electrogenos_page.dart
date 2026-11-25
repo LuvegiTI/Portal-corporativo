@@ -367,12 +367,17 @@ class _ReporteGruposElectrogenosPageState
           loading: cargando,
           onPressed: cargando ? null : buscar,
         ),
-        LuvegiButton.secondary(
+        
+        Visibility(
+        visible:false,
+        child:LuvegiButton.secondary(
           text: exportando ? 'Exportando...' : 'Exportar Excel',
           icon: exportando ? null : Icons.download_rounded,
           onPressed: cargando || exportando || !puedeExportar
+          
               ? null
               : exportarExcel,
+        ),
         ),
       ],
     );

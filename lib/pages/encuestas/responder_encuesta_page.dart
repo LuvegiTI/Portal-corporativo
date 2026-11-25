@@ -9,6 +9,7 @@ import '../../theme/luvegi_spacing.dart';
 import '../../theme/luvegi_text.dart';
 import '../../utils/mensaje_error.dart';
 import 'dialogo_postular.dart';
+import 'historial_encuestas_section.dart';
 
 class ResponderEncuestaPage extends StatefulWidget {
   final String token;
@@ -36,6 +37,8 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
 
   /// Encuesta que se esta envoyendo en este momento.
   int? _enviandoEncuestaId;
+
+  int _historialKey = 0;
 
   Timer? _temporizador;
 
@@ -160,6 +163,7 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
 
       await _cargar();
       if (!mounted) return;
+      _refrescarHistorial();
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -201,6 +205,11 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
     return _fecha(DateTime.tryParse(valor.replaceFirst(' ', 'T')));
   }
 
+  void _refrescarHistorial() {
+    if (!mounted) return;
+    setState(() => _historialKey++);
+  }
+
   @override
   Widget build(BuildContext context) {
     final mobile = MediaQuery.sizeOf(context).width < 760;
@@ -227,67 +236,78 @@ class _ResponderEncuestaPageState extends State<ResponderEncuestaPage> {
       );
     }
 
-    if (_error != null) {
-      return _card(
-        child: Column(
-          children: [
-            const Icon(
-              Icons.error_outline,
-              color: LuvegiColors.error,
-              size: 42,
-            ),
-            const SizedBox(height: LuvegiSpacing.md),
-            Text(_error!, textAlign: TextAlign.center, style: LuvegiText.body),
-            const SizedBox(height: LuvegiSpacing.md),
-            OutlinedButton.icon(
-              onPressed: _cargar,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reintentar'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (_encuestas.isEmpty) {
-      return _card(
-        child: Column(
-          children: [
-            const Icon(
-              Icons.assignment_outlined,
-              size: 48,
-              color: LuvegiColors.textHint,
-            ),
-            const SizedBox(height: LuvegiSpacing.md),
-            Text('No hay ninguna encuesta activa.', style: LuvegiText.title),
-            const SizedBox(height: LuvegiSpacing.xs),
-            Text(
-              'Cuando RRHH abra una encuesta aparecerá aquí para responder.',
-              textAlign: TextAlign.center,
-              style: LuvegiText.bodySecondary,
-            ),
-          ],
-        ),
-      );
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (_encuestas.length > 1) ...[
-          Text(
-            'Encuestas disponibles',
-            style: LuvegiText.title.copyWith(fontSize: 18),
+        if (_error != null) ...[
+          _card(
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  color: LuvegiColors.error,
+                  size: 42,
+                ),
+                const SizedBox(height: LuvegiSpacing.md),
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: LuvegiText.body,
+                ),
+                const SizedBox(height: LuvegiSpacing.md),
+                OutlinedButton.icon(
+                  onPressed: _cargar,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reintentar'),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: LuvegiSpacing.xs),
-          Text(
-            'Tienes ${_encuestas.length} encuestas abiertas. '
-            'Puedes responder y postularte según cada una.',
-            style: LuvegiText.bodySecondary,
+        ] else if (_encuestas.isEmpty) ...[
+          _card(
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.assignment_outlined,
+                  size: 48,
+                  color: LuvegiColors.textHint,
+                ),
+                const SizedBox(height: LuvegiSpacing.md),
+                Text(
+                  'No hay ninguna encuesta activa.',
+                  style: LuvegiText.title,
+                ),
+                const SizedBox(height: LuvegiSpacing.xs),
+                Text(
+                  'Cuando RRHH abra una encuesta aparecerá aquí para responder.',
+                  textAlign: TextAlign.center,
+                  style: LuvegiText.bodySecondary,
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: LuvegiSpacing.lg),
+        ] else ...[
+          if (_encuestas.length > 1) ...[
+            Text(
+              'Encuestas disponibles',
+              style: LuvegiText.title.copyWith(fontSize: 18),
+            ),
+            const SizedBox(height: LuvegiSpacing.xs),
+            Text(
+              'Tienes ${_encuestas.length} encuestas abiertas. '
+              'Puedes responder y postularte según cada una.',
+              style: LuvegiText.bodySecondary,
+            ),
+            const SizedBox(height: LuvegiSpacing.lg),
+          ],
+          ..._encuestas.map(_buildEncuesta),
         ],
-        ..._encuestas.map(_buildEncuesta),
+        HistorialEncuestasSection(
+          token: widget.token,
+          titulo: 'Historial de votaciones',
+          tipos: const {'VOTO'},
+          refreshKey: _historialKey,
+        ),
       ],
     );
   }
