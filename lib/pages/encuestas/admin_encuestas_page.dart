@@ -885,7 +885,8 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 _botonPrincipal(encuesta),
-                if (!esPostulacion || (encuesta.requisitos ?? 0) > 0)
+                if (!cerrada &&
+                    (!esPostulacion || (encuesta.requisitos ?? 0) > 0))
                   OutlinedButton.icon(
                     onPressed: () => esPostulacion
                         ? _abrirRequisitos(encuesta)
@@ -902,77 +903,79 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
                     icon: const Icon(Icons.groups_outlined, size: 18),
                     label: const Text('Ver inscritos'),
                   ),
-                PopupMenuButton<String>(
-                  tooltip: 'Más acciones',
-                  icon: const Icon(Icons.more_horiz),
-                  onSelected: (accion) => _accionEncuesta(accion, encuesta),
-                  itemBuilder: (ctx) => [
-                    const PopupMenuItem(
-                      value: 'editar',
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.edit_outlined, size: 18),
-                        title: Text('Editar'),
-                      ),
-                    ),
-                    if (!cerrada)
-                      const PopupMenuItem(
-                        value: 'programar',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.event_outlined, size: 18),
-                          title: Text('Programación'),
-                        ),
-                      ),
-                    if (!esPostulacion)
-                      const PopupMenuItem(
-                        value: 'participacion',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.group_outlined, size: 18),
-                          title: Text('Participación'),
-                        ),
-                      ),
-                    // "Abrir postulaciones" solo aparece cuando ya hay
-                    // requisitos registrados.
-                    if (!cerrada &&
-                        encuesta.estado != 'ABIERTA' &&
-                        (!esPostulacion || (encuesta.requisitos ?? 0) > 0))
-                      PopupMenuItem(
-                        value: 'abrir',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.play_arrow, size: 18),
-                          title: Text(
-                            esPostulacion
-                                ? 'Abrir postulaciones'
-                                : 'Abrir ahora',
+                if (!cerrada || !esPostulacion)
+                  PopupMenuButton<String>(
+                    tooltip: 'Más acciones',
+                    icon: const Icon(Icons.more_horiz),
+                    onSelected: (accion) => _accionEncuesta(accion, encuesta),
+                    itemBuilder: (ctx) => [
+                      if (!cerrada)
+                        const PopupMenuItem(
+                          value: 'editar',
+                          child: ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.edit_outlined, size: 18),
+                            title: Text('Editar'),
                           ),
                         ),
-                      ),
-                    if (encuesta.estado == 'BORRADOR')
-                      const PopupMenuItem(
-                        value: 'eliminar',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(
-                            Icons.delete_outline,
-                            size: 18,
-                            color: LuvegiColors.error,
-                          ),
-                          title: Text(
-                            'Eliminar',
-                            style: TextStyle(color: LuvegiColors.error),
+                      if (!cerrada)
+                        const PopupMenuItem(
+                          value: 'programar',
+                          child: ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.event_outlined, size: 18),
+                            title: Text('Programación'),
                           ),
                         ),
-                      ),
-                  ],
-                ),
+                      if (!esPostulacion)
+                        const PopupMenuItem(
+                          value: 'participacion',
+                          child: ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.group_outlined, size: 18),
+                            title: Text('Participación'),
+                          ),
+                        ),
+                      // "Abrir postulaciones" solo aparece cuando ya hay
+                      // requisitos registrados.
+                      if (!cerrada &&
+                          encuesta.estado != 'ABIERTA' &&
+                          (!esPostulacion || (encuesta.requisitos ?? 0) > 0))
+                        PopupMenuItem(
+                          value: 'abrir',
+                          child: ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.play_arrow, size: 18),
+                            title: Text(
+                              esPostulacion
+                                  ? 'Abrir postulaciones'
+                                  : 'Abrir ahora',
+                            ),
+                          ),
+                        ),
+                      if (encuesta.estado == 'BORRADOR')
+                        const PopupMenuItem(
+                          value: 'eliminar',
+                          child: ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              Icons.delete_outline,
+                              size: 18,
+                              color: LuvegiColors.error,
+                            ),
+                            title: Text(
+                              'Eliminar',
+                              style: TextStyle(color: LuvegiColors.error),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
               ],
             ),
           ],
@@ -2488,7 +2491,7 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
                               label: Text(
                                 _votantesRestringida
                                     ? 'Votan $_votantesSeleccionados'
-                                    : 'Nadie habilitado',
+                                    : 'Agregar encuestados',
                               ),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: _votantesRestringida

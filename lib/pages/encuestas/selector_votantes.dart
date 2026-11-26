@@ -174,7 +174,7 @@ Future<List<int>?> mostrarSelectorVotantes({
                           );
                       }),
                       icon: const Icon(Icons.done_all, size: 16),
-                      label: const Text('Marcar visibles'),
+                      label: const Text('Marcar Todos'),
                       style: TextButton.styleFrom(
                         foregroundColor: LuvegiColors.secondary,
                         padding: const EdgeInsets.symmetric(horizontal: 8),
