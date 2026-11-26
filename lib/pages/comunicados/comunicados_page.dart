@@ -26,9 +26,6 @@ class _ComunicadosPageState extends State<ComunicadosPage> {
   bool _cargando = true;
   String? _error;
 
-  // Escala de fuente para accesibilidad
-  double _escalaFuente = 1.0;
-
   @override
   void initState() {
     super.initState();
@@ -147,57 +144,6 @@ class _ComunicadosPageState extends State<ComunicadosPage> {
               ),
             ],
           ),
-          actions: [
-            // Herramientas de accesibilidad (A-, A+)
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    tooltip: 'Reducir texto',
-                    icon: const Text(
-                      'A-',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF475569),
-                      ),
-                    ),
-                    onPressed: () {
-                      if (_escalaFuente > 0.8)
-                        setState(() => _escalaFuente -= 0.15);
-                    },
-                  ),
-                  Container(
-                    width: 1,
-                    height: 20,
-                    color: const Color(0xFFCBD5E1),
-                  ),
-                  IconButton(
-                    tooltip: 'Agrandar texto',
-                    icon: const Text(
-                      'A+',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF475569),
-                      ),
-                    ),
-                    onPressed: () {
-                      if (_escalaFuente < 2.0)
-                        setState(() => _escalaFuente += 0.15);
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
           bottom: const TabBar(
             labelColor: LuvegiColors.primary,
             unselectedLabelColor: Color(0xFF64748B),
@@ -293,7 +239,6 @@ class _ComunicadosPageState extends State<ComunicadosPage> {
       ),
     );
   }
-
 
   // ========================================================================
   // REACCIONES (tipo Facebook)
@@ -526,7 +471,8 @@ class _ComunicadosPageState extends State<ComunicadosPage> {
     if (partes.length == 1) {
       return partes.first.substring(0, 1).toUpperCase();
     }
-    return (partes[0].substring(0, 1) + partes[1].substring(0, 1)).toUpperCase();
+    return (partes[0].substring(0, 1) + partes[1].substring(0, 1))
+        .toUpperCase();
   }
 
   Widget _botonReaccion(Comunicado c, String tipo, String emoji) {
@@ -559,7 +505,9 @@ class _ComunicadosPageState extends State<ComunicadosPage> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: activa ? LuvegiColors.primary : const Color(0xFF475569),
+                    color: activa
+                        ? LuvegiColors.primary
+                        : const Color(0xFF475569),
                   ),
                 ),
               ],
@@ -722,7 +670,7 @@ class _ComunicadosPageState extends State<ComunicadosPage> {
                 Text(
                   c.titulo,
                   style: TextStyle(
-                    fontSize: 22 * (_escalaFuente > 1.2 ? 1.2 : _escalaFuente),
+                    fontSize: 22,
                     fontWeight: FontWeight.w800,
                     color: const Color(0xFF0F172A),
                     height: 1.2,
@@ -772,7 +720,7 @@ class _ComunicadosPageState extends State<ComunicadosPage> {
                   Text(
                     c.contenido,
                     style: TextStyle(
-                      fontSize: 15 * _escalaFuente,
+                      fontSize: 15,
                       height: 1.6,
                       color: const Color(0xFF334155),
                     ),
@@ -819,7 +767,7 @@ class _ComunicadosPageState extends State<ComunicadosPage> {
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       color: const Color(0xFF334155),
-                                      fontSize: 13 * _escalaFuente,
+                                      fontSize: 13,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
