@@ -33,7 +33,7 @@ class Encuesta {
   final String? fechaFin;
   final String estado;
 
-  /// Flujo: ENCUESTA (votacion directa) o POSTULACION (candidatos).
+  /// Flujo: ENCUESTA (votación), CUESTIONARIO (preguntas) o POSTULACION.
   final String tipo;
   final String? inscripcionInicio;
   final String? inscripcionFin;
@@ -115,8 +115,18 @@ class Encuesta {
   /// True si es un proceso de postulaciones (el personal se postula).
   bool get esPostulacion => tipo == 'POSTULACION';
 
-  /// True si es una encuesta de votacion directa.
-  bool get esEncuesta => tipo != 'POSTULACION';
+  /// True si es un proceso de elecciones (votación directa).
+  bool get esEncuesta => tipo == 'ENCUESTA';
+
+  /// True si es una encuesta de preguntas y respuestas.
+  bool get esCuestionario => tipo == 'CUESTIONARIO';
+
+  /// Etiqueta visible en la app. Los valores de [tipo] no cambian.
+  String get etiquetaTipo => esPostulacion
+      ? 'Postulaciones'
+      : esCuestionario
+      ? 'Encuesta'
+      : 'Elecciones';
 
   /// Inicio de la ventana de postulaciones (si se programo).
   DateTime? get postulacionesInicio => _fechaIso(inscripcionInicio);
@@ -174,7 +184,8 @@ class Encuesta {
 /// Tipo de flujo de la encuesta.
 String _tipoDesdeJson(Map<String, dynamic> json) {
   final tipo = (json['tipo'] ?? '').toString().toUpperCase();
-  return tipo == 'POSTULACION' ? 'POSTULACION' : 'ENCUESTA';
+  if (tipo == 'POSTULACION' || tipo == 'CUESTIONARIO') return tipo;
+  return 'ENCUESTA';
 }
 
 /// Convierte la fecha del servidor (ISO con zona) a hora local.
@@ -543,8 +554,18 @@ class EncuestaHistorialItem {
 
   bool get esVoto => tipoParticipacion.toUpperCase() == 'VOTO';
   bool get esPostulacion => tipoParticipacion.toUpperCase() == 'POSTULACION';
+  bool get esCuestionario => tipoEncuesta.toUpperCase() == 'CUESTIONARIO';
 
-  String get etiquetaParticipacion => esVoto ? 'Voto' : 'Postulación';
+  String get etiquetaParticipacion {
+    if (esPostulacion) return 'Postulación';
+    return esCuestionario ? 'Respuesta' : 'Voto';
+  }
+
+  String get etiquetaTipoEncuesta => esPostulacion
+      ? 'Postulaciones'
+      : esCuestionario
+      ? 'Encuesta'
+      : 'Elecciones';
 
   String get estadoMostrado {
     if (retirada) return 'RETIRADA';
@@ -562,7 +583,8 @@ class EncuestaHistorialItem {
       encuestaId: _entero(json['encuesta_id']),
       titulo: (json['titulo'] ?? '').toString(),
       descripcion: (json['descripcion'] ?? '').toString(),
-      tipoEncuesta: (json['tipo_encuesta'] ?? 'ENCUESTA').toString(),
+      tipoEncuesta: ((json['tipo_encuesta'] ?? 'ENCUESTA').toString())
+          .toUpperCase(),
       estadoEncuesta: (json['estado_encuesta'] ?? '').toString(),
       fechaInicio: json['fecha_inicio']?.toString(),
       fechaFin: json['fecha_fin']?.toString(),

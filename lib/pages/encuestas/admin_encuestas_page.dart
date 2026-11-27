@@ -12,6 +12,7 @@ import '../../theme/luvegi_spacing.dart';
 import '../../theme/luvegi_text.dart';
 import '../../utils/dialog_controllers.dart';
 import '../../utils/mensaje_error.dart';
+import 'admin_cuestionario_page.dart';
 
 class AdminEncuestasPage extends StatefulWidget {
   final String token;
@@ -105,12 +106,14 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
         fechaFin: resultado.fechaFin,
       );
       if (!mounted) return;
-      _aviso(
-        resultado.tipo == 'POSTULACION'
-            ? 'Postulación creada. Registra los requisitos para que el '
-                  'personal pueda inscribirse.'
-            : 'Encuesta creada. Agrega preguntas, opciones y prográmala.',
-      );
+      _aviso(switch (resultado.tipo) {
+        'POSTULACION' =>
+          'Postulaciones creadas. Registra los requisitos para que el '
+              'personal pueda inscribirse.',
+        'CUESTIONARIO' =>
+          'Encuesta creada. Agrega preguntas, respuestas y prográmala.',
+        _ => 'Elecciones creadas. Agrega preguntas, opciones y prográmalas.',
+      });
       await _cargar();
     } catch (e) {
       if (mounted) _aviso(MensajeError.desdeExcepcion(e), error: true);
@@ -136,7 +139,7 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
         fechaFin: resultado.fechaFin,
       );
       if (!mounted) return;
-      _aviso('Encuesta actualizada.');
+      _aviso('Cambios guardados.');
       await _cargar();
     } catch (e) {
       if (mounted) _aviso(MensajeError.desdeExcepcion(e), error: true);
@@ -148,7 +151,13 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
     if (!abrir) {
       try {
         await _service.cerrar(token: widget.token, id: encuesta.id);
-        _aviso('Encuesta cerrada.');
+        _aviso(
+          encuesta.esPostulacion
+              ? 'Postulaciones cerradas.'
+              : encuesta.esCuestionario
+              ? 'Encuesta cerrada.'
+              : 'Elecciones cerradas.',
+        );
         await _cargar();
       } catch (e) {
         if (mounted) _aviso(MensajeError.desdeExcepcion(e), error: true);
@@ -158,7 +167,13 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
 
     try {
       await _service.abrir(token: widget.token, id: encuesta.id);
-      _aviso('Encuesta abierta.');
+      _aviso(
+        encuesta.esPostulacion
+            ? 'Postulaciones abiertas.'
+            : encuesta.esCuestionario
+            ? 'Encuesta abierta.'
+            : 'Elecciones abiertas.',
+      );
       await _cargar();
     } catch (e) {
       if (mounted) {
@@ -184,6 +199,8 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
     if (encuesta.cerrada) return;
     final esPostulacion =
         encuesta.esPostulacion || (encuesta.requisitos ?? 0) > 0;
+    final etiquetaVentana = encuesta.esCuestionario ? 'Encuesta' : 'Votación';
+    final ventana = encuesta.esCuestionario ? 'la encuesta' : 'la votación';
 
     DateTime? insInicio = _parseFecha(encuesta.inscripcionInicio);
     DateTime? insFin = _parseFecha(encuesta.inscripcionFin);
@@ -196,7 +213,11 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
           title: Text(
-            esPostulacion ? 'Programar postulación' : 'Programar encuesta',
+            esPostulacion
+                ? 'Programar postulaciones'
+                : encuesta.esCuestionario
+                ? 'Programar encuesta'
+                : 'Programar elecciones',
           ),
           content: SizedBox(
             // Ancho fijo: el AlertDialog calcula el ancho intrinseco del
@@ -242,7 +263,7 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
                   if (!esPostulacion) ...[
                     const SizedBox(height: LuvegiSpacing.md),
                     Text(
-                      'Votación',
+                      etiquetaVentana,
                       style: LuvegiText.title.copyWith(fontSize: 15),
                     ),
                     _filaFechaHora(
@@ -267,7 +288,7 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'La votación se abrirá y cerrará automáticamente en esas '
+                      'La $ventana se abrirá y cerrará automáticamente en esas '
                       'fechas.',
                       style: LuvegiText.caption,
                     ),
@@ -330,13 +351,13 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
       }
     } else {
       if (!tieneVotacion) {
-        _aviso('Indica la apertura y el cierre de la votación.', error: true);
+        _aviso('Indica la apertura y el cierre de $ventana.', error: true);
         return;
       }
       if (votInicio!.isBefore(ahoraValidacion) ||
           votFin!.isBefore(ahoraValidacion)) {
         _aviso(
-          'La apertura y el cierre de la votación no pueden ser pasados.',
+          'La apertura y el cierre de $ventana no pueden ser pasados.',
           error: true,
         );
         return;
@@ -350,14 +371,14 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
       }
       if (tieneVotacion && !votFin!.isAfter(votInicio!)) {
         _aviso(
-          'El cierre de la votación debe ser posterior a la apertura.',
+          'El cierre de $ventana debe ser posterior a la apertura.',
           error: true,
         );
         return;
       }
       if (tieneInscripcion && tieneVotacion && !votInicio!.isAfter(insFin!)) {
         _aviso(
-          'La votación debe empezar después de que termine la inscripción.',
+          'La $ventana debe empezar después de que termine la inscripción.',
           error: true,
         );
         return;
@@ -386,8 +407,12 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
             ? 'Postulación programada para el '
                   '${_formatearFecha(insInicio!)} (tu hora). Se abrirá '
                   'automáticamente.'
-            : 'Encuesta programada para el '
+            : encuesta.esCuestionario
+            ? 'Encuesta programada para el '
                   '${_formatearFecha(votInicio!)} (tu hora). Se abrirá '
+                  'automáticamente.'
+            : 'Elecciones programadas para el '
+                  '${_formatearFecha(votInicio!)} (tu hora). Se abrirán '
                   'automáticamente.',
       );
       await _cargar();
@@ -509,7 +534,7 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Eliminar encuesta'),
+        title: const Text('Eliminar proceso'),
         content: Text(
           '¿Eliminar "${encuesta.titulo}"? Esta acción no se puede deshacer.',
         ),
@@ -529,7 +554,7 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
     if (ok != true || !mounted) return;
     try {
       await _service.eliminar(token: widget.token, id: encuesta.id);
-      _aviso('Encuesta eliminada.');
+      _aviso('Proceso eliminado.');
       await _cargar();
     } catch (e) {
       if (mounted) _aviso(MensajeError.desdeExcepcion(e), error: true);
@@ -550,11 +575,17 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => _EncuestaDetallePage(
-          token: widget.token,
-          encuesta: encuesta,
-          service: _service,
-        ),
+        builder: (_) => encuesta.esCuestionario
+            ? AdminCuestionarioPage(
+                token: widget.token,
+                encuesta: encuesta,
+                service: _service,
+              )
+            : _EncuestaDetallePage(
+                token: widget.token,
+                encuesta: encuesta,
+                service: _service,
+              ),
       ),
     );
     await _cargar();
@@ -650,12 +681,12 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
                         ),
                         const SizedBox(height: LuvegiSpacing.md),
                         Text(
-                          'Aún no hay encuestas registradas.',
+                          'Aún no hay procesos registrados.',
                           style: LuvegiText.title,
                         ),
                         const SizedBox(height: LuvegiSpacing.xs),
                         Text(
-                          'Crea una encuesta para comenzar.',
+                          'Crea elecciones, una encuesta o postulaciones.',
                           style: LuvegiText.bodySecondary,
                         ),
                       ],
@@ -678,9 +709,9 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Encuestas', style: LuvegiText.title.copyWith(fontSize: 20)),
+          Text('Procesos', style: LuvegiText.title.copyWith(fontSize: 20)),
           Text(
-            'Gestiona encuestas de votación y procesos de postulación.',
+            'Gestiona elecciones, encuestas y postulaciones.',
             style: LuvegiText.bodySecondary,
           ),
           if (_servidor.isNotEmpty) ...[
@@ -699,7 +730,7 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
     final boton = ElevatedButton.icon(
       onPressed: _nuevaEncuesta,
       icon: const Icon(Icons.add),
-      label: const Text('Nueva encuesta'),
+      label: const Text('Nuevo proceso'),
       style: ElevatedButton.styleFrom(
         backgroundColor: LuvegiColors.secondary,
         foregroundColor: Colors.white,
@@ -798,10 +829,14 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
                     ),
                     _chip(
                       encuesta.esPostulacion || (encuesta.requisitos ?? 0) > 0
-                          ? 'Postulación'
-                          : 'Encuesta',
+                          ? 'Postulaciones'
+                          : encuesta.esCuestionario
+                          ? 'Encuesta'
+                          : 'Elecciones',
                       encuesta.esPostulacion || (encuesta.requisitos ?? 0) > 0
                           ? LuvegiColors.warning
+                          : encuesta.esCuestionario
+                          ? LuvegiColors.primary
                           : LuvegiColors.secondary,
                     ),
                   ],
@@ -852,11 +887,16 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
                   ),
                 if (!esPostulacion && encuesta.votacionInicio != null)
                   _dato(
-                    'Abre votación',
+                    encuesta.esCuestionario ? 'Abre encuesta' : 'Abre votación',
                     _fechaLegible(encuesta.votacionInicio),
                   ),
                 if (!esPostulacion && encuesta.votacionFin != null)
-                  _dato('Cierra votación', _fechaLegible(encuesta.votacionFin)),
+                  _dato(
+                    encuesta.esCuestionario
+                        ? 'Cierra encuesta'
+                        : 'Cierra votación',
+                    _fechaLegible(encuesta.votacionFin),
+                  ),
               ],
             ),
             const Divider(height: LuvegiSpacing.xl),
@@ -992,6 +1032,7 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
     );
     final esPostulacion =
         encuesta.esPostulacion || (encuesta.requisitos ?? 0) > 0;
+    final esCuestionario = encuesta.esCuestionario;
 
     if (encuesta.cerrada) {
       if (esPostulacion) {
@@ -1020,7 +1061,13 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
       return FilledButton.icon(
         onPressed: () => _abrirOCerrar(encuesta),
         icon: const Icon(Icons.lock_outline, size: 18),
-        label: Text(esPostulacion ? 'Cerrar postulaciones' : 'Cerrar votación'),
+        label: Text(
+          esPostulacion
+              ? 'Cerrar postulaciones'
+              : esCuestionario
+              ? 'Cerrar encuesta'
+              : 'Cerrar votación',
+        ),
         style: FilledButton.styleFrom(
           backgroundColor: LuvegiColors.error,
           foregroundColor: Colors.white,
@@ -1060,6 +1107,7 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
     final motivo = encuesta.motivoApertura ?? '';
     final esPostulacion =
         encuesta.esPostulacion || (encuesta.requisitos ?? 0) > 0;
+    final ventana = encuesta.esCuestionario ? 'encuesta' : 'votación';
     final inicio = esPostulacion
         ? encuesta.inscripcionInicio
         : encuesta.votacionInicio;
@@ -1083,10 +1131,13 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
           }
         : switch (motivo) {
             'VENCIDO' =>
-              'El plazo de votación ya venció (cerraba el $cierre); vuelve a '
+              'El plazo de $ventana ya venció (cerraba el $cierre); vuelve a '
                   'programarla.',
             'SIN_FECHA' => 'No tiene fecha de apertura programada.',
-            'CERRADA' => 'La encuesta ya está cerrada.',
+            'CERRADA' =>
+              encuesta.esCuestionario
+                  ? 'La encuesta ya está cerrada.'
+                  : 'Las elecciones ya están cerradas.',
             _ =>
               'No se abrió automáticamente. Revisa la fecha guardada '
                   '($apertura) o abre la fase a mano desde el menú ⋯.',
@@ -1116,13 +1167,17 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
     );
   }
 
-  /// Sin personal habilitado el servidor no muestra la encuesta a nadie,
-  /// asi que tampoco se puede postular.
+  /// Sin personal habilitado el servidor no muestra la encuesta a nadie.
   /// En una Encuesta sin personal habilitado nadie puede votar. En una
-  /// Postulacion puede votar todo el personal, asi que no avisa.
+  /// Postulacion o Cuestionario puede responderlo todo el personal con
+  /// permiso, asi que no avisa.
   bool _sinHabilitados(Encuesta encuesta) {
     if (encuesta.cerrada) return false;
-    if (encuesta.esPostulacion || (encuesta.requisitos ?? 0) > 0) return false;
+    if (encuesta.esPostulacion ||
+        encuesta.esCuestionario ||
+        (encuesta.requisitos ?? 0) > 0) {
+      return false;
+    }
     if (!encuesta.postulacionesAbiertas) return false;
     final votantes = encuesta.votantes;
     if (votantes == null || votantes > 0) return false;
@@ -1149,7 +1204,8 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
           Expanded(
             child: Text(
               'Nadie está habilitado para votar: hasta que marques “Personal '
-              'que puede votar”, el personal no podrá votar en esta encuesta.',
+              'que puede votar”, el personal no podrá votar en estas '
+              'elecciones.',
               style: LuvegiText.caption,
             ),
           ),
@@ -1174,10 +1230,13 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
   }
 
   Widget _avisoVotacion(Encuesta encuesta) {
-    const texto =
-        'La votación no se abrió automáticamente: la encuesta todavía no '
-        'tiene opciones para votar. Agrega al menos una opción o abre la '
-        'votación a mano desde el menú ⋯.';
+    final texto = encuesta.esCuestionario
+        ? 'La encuesta no se abrió automáticamente: todavía no tiene '
+              'respuestas registradas. Agrega al menos una o ábrela a mano '
+              'desde el menú ⋯.'
+        : 'La votación no se abrió automáticamente: la encuesta todavía no '
+              'tiene opciones para votar. Agrega al menos una opción o abre la '
+              'votación a mano desde el menú ⋯.';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(LuvegiSpacing.md),
@@ -1204,6 +1263,7 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
   Widget _checklistConfiguracion(Encuesta encuesta) {
     final esPostulacion =
         encuesta.esPostulacion || (encuesta.requisitos ?? 0) > 0;
+    final esCuestionario = encuesta.esCuestionario;
     final pasos = <(bool, String, VoidCallback)>[
       if (esPostulacion) ...[
         (
@@ -1225,10 +1285,12 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
         ),
         (
           encuesta.opciones > 0,
-          'Agrega al menos una opción',
+          esCuestionario
+              ? 'Agrega al menos una respuesta'
+              : 'Agrega al menos una opción',
           () => _abrirDetalle(encuesta),
         ),
-        if (encuesta.votantes != null)
+        if (encuesta.votantes != null && !esCuestionario)
           (
             encuesta.votantes! > 0,
             'Indica quién puede votar',
@@ -1236,7 +1298,9 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
           ),
         (
           encuesta.votacionInicio != null && encuesta.votacionFin != null,
-          'Programa la apertura y el cierre de la votación',
+          esCuestionario
+              ? 'Programa la apertura y el cierre de la encuesta'
+              : 'Programa la apertura y el cierre de la votación',
           () => _programarEncuesta(encuesta),
         ),
       ],
@@ -1299,7 +1363,8 @@ class _AdminEncuestasPageState extends State<AdminEncuestasPage> {
         encuesta.esPostulacion || (encuesta.requisitos ?? 0) > 0;
     if (encuesta.cerrada) return 'Cerrada';
     if (encuesta.estado == 'ABIERTA') {
-      return esPostulacion ? 'Inscripción abierta' : 'En votación';
+      if (esPostulacion) return 'Inscripción abierta';
+      return encuesta.esCuestionario ? 'En curso' : 'En votación';
     }
     if (encuesta.programada) return 'Programada';
     return 'Borrador';
@@ -1490,6 +1555,17 @@ Future<void> _abrirSelectorDesdeFormulario(
   }
 }
 
+String _etiquetaTipoProceso(String tipo) {
+  switch (tipo) {
+    case 'POSTULACION':
+      return 'Postulaciones';
+    case 'CUESTIONARIO':
+      return 'Encuesta';
+    default:
+      return 'Elecciones';
+  }
+}
+
 Future<_EncuestaForm?> _editarEncuestaDialog(
   BuildContext context, {
   Encuesta? encuesta,
@@ -1508,11 +1584,8 @@ Future<_EncuestaForm?> _editarEncuestaDialog(
       controllers: [tituloCtrl, descCtrl, inicioCtrl, finCtrl],
       builder: (ctx, setDialogState) => AlertDialog(
         title: Text(
-          encuesta == null
-              ? (tipo == 'POSTULACION' ? 'Nueva postulación' : 'Nueva encuesta')
-              : (tipo == 'POSTULACION'
-                    ? 'Editar postulación'
-                    : 'Editar encuesta'),
+          '${encuesta == null ? 'Nuevo proceso' : 'Editar'} · '
+          '${_etiquetaTipoProceso(tipo)}',
         ),
         // Mismo formato compacto que el alta de usuario: ancho acotado y
         // scroll, para que el dialogo no crezca con el texto.
@@ -1554,14 +1627,21 @@ Future<_EncuestaForm?> _editarEncuestaDialog(
                   runSpacing: LuvegiSpacing.sm,
                   children: [
                     ChoiceChip(
-                      label: const Text('Encuesta'),
+                      label: const Text('Elecciones'),
                       avatar: const Icon(Icons.poll_outlined, size: 18),
                       selected: tipo == 'ENCUESTA',
                       onSelected: (_) =>
                           setDialogState(() => tipo = 'ENCUESTA'),
                     ),
                     ChoiceChip(
-                      label: const Text('Postulación'),
+                      label: const Text('Encuesta'),
+                      avatar: const Icon(Icons.quiz_outlined, size: 18),
+                      selected: tipo == 'CUESTIONARIO',
+                      onSelected: (_) =>
+                          setDialogState(() => tipo = 'CUESTIONARIO'),
+                    ),
+                    ChoiceChip(
+                      label: const Text('Postulaciones'),
                       avatar: const Icon(Icons.how_to_reg_outlined, size: 18),
                       selected: tipo == 'POSTULACION',
                       onSelected: (_) =>
@@ -1570,18 +1650,22 @@ Future<_EncuestaForm?> _editarEncuestaDialog(
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  tipo == 'ENCUESTA'
-                      ? 'Votación directa: el personal habilitado elige una '
-                            'opción en cada pregunta.'
-                      : 'El personal se registra marcando los requisitos y su '
-                            'postulación queda guardada con su usuario y DNI.',
-                  style: LuvegiText.caption,
-                ),
+                Text(switch (tipo) {
+                  'ENCUESTA' =>
+                    'Elecciones: el personal habilitado elige una opción en '
+                        'cada pregunta.',
+                  'CUESTIONARIO' =>
+                    'Encuesta: todo el personal con permiso responde cada '
+                        'pregunta. No admite postulaciones.',
+                  _ =>
+                    'Postulaciones: el personal se registra marcando los '
+                        'requisitos y su postulación queda guardada con su '
+                        'usuario y DNI.',
+                }, style: LuvegiText.caption),
                 const SizedBox(height: LuvegiSpacing.md),
                 const SizedBox(height: LuvegiSpacing.md),
                 // Quien puede votar. Solo aplica a las encuestas de votacion
-                // directa; en una postulacion se vota despues si corresponde.
+                // directa; el cuestionario lo responde todo el personal.
                 if (tipo == 'ENCUESTA') ...[
                   if (encuesta != null && service != null && token != null)
                     _filaVotantes(context, service, token, encuesta.id)
@@ -1596,7 +1680,8 @@ Future<_EncuestaForm?> _editarEncuestaDialog(
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Podras elegir quien puede votar al editar la encuesta.',
+                            'Podrás elegir quién puede votar al editar las '
+                            'elecciones.',
                             style: LuvegiText.caption,
                           ),
                         ),
@@ -1638,9 +1723,7 @@ Future<_EncuestaForm?> _editarEncuestaDialog(
   if (titulo.isEmpty) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('El título de la encuesta es obligatorio.'),
-        ),
+        const SnackBar(content: Text('El título del proceso es obligatorio.')),
       );
     }
     return null;
@@ -1676,7 +1759,7 @@ class _EncuestaDetallePage extends StatefulWidget {
 }
 
 class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
-  /// Tipo de flujo guardado en el servidor (ENCUESTA / POSTULACION).
+  /// Tipo de flujo guardado en el servidor (ENCUESTA / CUESTIONARIO / POSTULACION).
   String _tipo = 'ENCUESTA';
 
   /// Cuantos requisitos hay registrados.
@@ -1686,6 +1769,8 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
   /// Si ya hay requisitos cargados, el flujo se trata como postulacion.
   bool get _esPostulacion =>
       widget.soloInscritos || _tipo == 'POSTULACION' || _tieneRequisitos;
+
+  bool get _esCuestionario => _tipo == 'CUESTIONARIO' && !_esPostulacion;
 
   /// Si ya hay requisitos cargados, el flujo es de postulacion aunque el
   /// tipo no se haya cambiado.
@@ -2428,7 +2513,11 @@ class _EncuestaDetallePageState extends State<_EncuestaDetallePage> {
         backgroundColor: LuvegiColors.surface,
         foregroundColor: LuvegiColors.textPrimary,
         title: Text(
-          '${_esPostulacion ? 'Postulación' : 'Encuesta'} · ${widget.encuesta.titulo}',
+          '${_esPostulacion
+              ? 'Postulaciones'
+              : _esCuestionario
+              ? 'Encuesta'
+              : 'Elecciones'} · ${widget.encuesta.titulo}',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),

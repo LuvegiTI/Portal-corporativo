@@ -79,7 +79,7 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
       setState(() {
         // Solo aparecen las postulaciones que RRHH ya abrio (con los
         // requisitos registrados). Si el personal ya se inscribio, se
-        // muestra aunque se cierre, para poder ver o retirar su registro.
+        // muestra aunque se cierre, para poder ver su registro.
         _encuestas = lista
             .where(
               (e) =>
@@ -252,7 +252,7 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
                     ),
                   ),
                   const SizedBox(height: LuvegiSpacing.sm),
-                  _buildEstadoPostulacion(e),
+                  _buildEstadoPostulacion(),
                 ],
               ),
             ),
@@ -364,7 +364,7 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
             ],
             if (yaPostulo) ...[
               const SizedBox(height: LuvegiSpacing.md),
-              _buildEstadoPostulacion(e),
+              _buildEstadoPostulacion(),
             ] else if (enInscripcion) ...[
               const SizedBox(height: LuvegiSpacing.md),
               SizedBox(
@@ -429,8 +429,7 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
     );
   }
 
-  Widget _buildEstadoPostulacion(EncuestaVotable e) {
-    final postulacion = e.misPostulaciones.entries.first;
+  Widget _buildEstadoPostulacion() {
     // La postulacion no pasa por validacion: queda registrada tal cual.
     final titulo = 'Postulación registrada';
     final detalle =
@@ -466,21 +465,6 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
                 ),
                 const SizedBox(height: 4),
                 Text(detalle, style: LuvegiText.bodySecondary),
-                if (e.puedeRetirar) ...[
-                  const SizedBox(height: 4),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: () => _retirar(e, postulacion.value),
-                      icon: const Icon(Icons.undo, size: 16),
-                      label: const Text('Retirar postulación'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: LuvegiColors.textSecondary,
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -519,30 +503,6 @@ class _PostulacionesPageState extends State<PostulacionesPage> {
     if (!ok || !mounted) return;
     await _cargar();
     _refrescarHistorial();
-  }
-
-  Future<void> _retirar(EncuestaVotable e, int opcionId) async {
-    try {
-      await _service.retirarPostulacion(
-        token: widget.token,
-        opcionId: opcionId,
-      );
-      if (!mounted) return;
-      await _cargar();
-      if (!mounted) return;
-      _refrescarHistorial();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tu postulación se retiró.')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(MensajeError.desdeExcepcion(e)),
-          backgroundColor: LuvegiColors.error,
-        ),
-      );
-    }
   }
 
   Widget _card({required Widget child}) => SizedBox(

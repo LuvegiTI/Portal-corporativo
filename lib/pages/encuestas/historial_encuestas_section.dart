@@ -12,6 +12,7 @@ class HistorialEncuestasSection extends StatefulWidget {
   final String token;
   final String titulo;
   final Set<String>? tipos;
+  final Set<String>? tiposEncuesta;
   final int refreshKey;
 
   const HistorialEncuestasSection({
@@ -19,6 +20,7 @@ class HistorialEncuestasSection extends StatefulWidget {
     required this.token,
     this.titulo = 'Historial de participación',
     this.tipos,
+    this.tiposEncuesta,
     this.refreshKey = 0,
   });
 
@@ -68,10 +70,16 @@ class _HistorialEncuestasSectionState extends State<HistorialEncuestasSection> {
 
   List<EncuestaHistorialItem> get _visibles {
     final tipos = widget.tipos;
-    if (tipos == null) return _items;
-    return _items
-        .where((e) => tipos.contains(e.tipoParticipacion.toUpperCase()))
-        .toList();
+    final tiposEncuesta = widget.tiposEncuesta;
+    if (tipos == null && tiposEncuesta == null) return _items;
+    return _items.where((e) {
+      final porParticipacion =
+          tipos == null || tipos.contains(e.tipoParticipacion.toUpperCase());
+      final porEncuesta =
+          tiposEncuesta == null ||
+          tiposEncuesta.contains(e.tipoEncuesta.toUpperCase());
+      return porParticipacion && porEncuesta;
+    }).toList();
   }
 
   @override
@@ -135,6 +143,7 @@ class _HistorialEncuestasSectionState extends State<HistorialEncuestasSection> {
 
   Widget _buildItem(EncuestaHistorialItem item) {
     final esVoto = item.esVoto;
+    final esCuestionario = item.esCuestionario;
     final estado = item.estadoMostrado.toUpperCase();
 
     return Padding(
@@ -148,7 +157,9 @@ class _HistorialEncuestasSectionState extends State<HistorialEncuestasSection> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(
-                  esVoto
+                  esCuestionario
+                      ? Icons.quiz_outlined
+                      : esVoto
                       ? Icons.how_to_vote_outlined
                       : Icons.how_to_reg_outlined,
                   color: LuvegiColors.secondary,
@@ -157,7 +168,9 @@ class _HistorialEncuestasSectionState extends State<HistorialEncuestasSection> {
                 const SizedBox(width: LuvegiSpacing.sm),
                 Expanded(
                   child: Text(
-                    item.titulo.isEmpty ? 'Encuesta' : item.titulo,
+                    item.titulo.isEmpty
+                        ? item.etiquetaTipoEncuesta
+                        : item.titulo,
                     style: LuvegiText.body.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -183,6 +196,8 @@ class _HistorialEncuestasSectionState extends State<HistorialEncuestasSection> {
                 ),
                 if (esVoto && item.recibo != null && item.recibo!.isNotEmpty)
                   Text('Recibo: ${item.recibo}', style: LuvegiText.caption),
+                if (esCuestionario)
+                  Text('Respuesta registrada', style: LuvegiText.caption),
                 if (!esVoto)
                   Text(
                     item.retirada

@@ -348,7 +348,8 @@ Future<List<int>?> mostrarSelectorVotantes({
     builder: (ctx) => AlertDialog(
       title: const Text('Sin personal habilitado'),
       content: const Text(
-        'No marcaste a nadie. Si guardas, nadie podrá votar en esta encuesta '
+        'No marcaste a nadie. Si guardas, nadie podrá votar en estas '
+        'elecciones '
         'hasta que asignes personal.',
       ),
       actions: [
